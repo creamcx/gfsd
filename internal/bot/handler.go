@@ -2,7 +2,6 @@ package bot
 
 import (
 	"astro-sarafan/internal/models"
-	"net/url"
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -25,16 +24,13 @@ const (
 	// Имя бота (нужно заменить на имя вашего бота)
 	botUsername = "InviteAstroBot"
 
-	// Текст сообщения для друга
-	shareMessageText = `«Привет! Я только что получила 
-астрологический разбор, и он реально 
-классный! 🙌 У меня есть для 
-тебя уникальный подарок – 
-мини-консультация у астролога!
-
-👉 Просто нажми сюда и 
-бот автоматически отправит твой 
-промокод астрологу → 💌 Написать астрологу`
+	// Текст сообщения для пересылки с Markdown
+	shareMessageText = "Привет! Я только что получила " +
+		"астрологический разбор, и он реально " +
+		"классный! 🙌 У меня есть для " +
+		"тебя уникальный подарок – " +
+		"мини-консультация у астролога!\n\n" +
+		"🚀 Нажми сюда: [💌 Написать астрологу](https://t.me/InviteAstroBot?start=astro)"
 
 	// Ссылка для перехода к боту с командой на консультацию
 	botLink = "https://t.me/" + botUsername + "?start=astro"
@@ -44,10 +40,8 @@ const (
 func (s *Service) HandleUpdate(update models.User) error {
 	// Обработка команды /start
 	if strings.HasPrefix(update.Text, "/start") {
-		// Проверяем, есть ли параметры в команде start
 		parts := strings.Split(update.Text, " ")
 		if len(parts) > 1 && parts[1] == "astro" {
-			// Это запрос на консультацию по глубокой ссылке
 			return s.handleConsultationRequest(update.ChatID, update.FullName, update.Username)
 		}
 		return s.sendWelcomeMessage(update.ChatID)
@@ -63,7 +57,7 @@ func (s *Service) HandleUpdate(update models.User) error {
 		return s.handleConsultationRequest(update.ChatID, update.FullName, update.Username)
 	}
 
-	// Обработка клика на текст "Написать астрологу"
+	// Обработка клика на текст "Написать астрологу" (если кто-то вручную напишет)
 	if strings.Contains(update.Text, "Написать астрологу") {
 		return s.handleConsultationRequest(update.ChatID, update.FullName, update.Username)
 	}
@@ -74,7 +68,7 @@ func (s *Service) HandleUpdate(update models.User) error {
 
 // sendWelcomeMessage - отправляет приветственное сообщение с кнопкой "Отправить другу"
 func (s *Service) sendWelcomeMessage(chatID int64) error {
-	// Отправляем только приветственное сообщение с текстом для форварда
+	// Отправляем приветственное сообщение
 	if err := s.telegram.SendMessage(chatID, welcomeMessage); err != nil {
 		s.logger.Error("ошибка при отправке приветственного сообщения",
 			zap.Error(err),
@@ -92,7 +86,7 @@ func (s *Service) sendWelcomeMessage(chatID int64) error {
 	keyboard.ResizeKeyboard = true
 
 	// Отправляем сообщение с кнопкой
-	msg := "Нажмите кнопку ниже, чтобы отправить приглашение другу 👇"
+	msg := "Нажмите кнопку ниже, чтобы подготовить приглашение для друга 👇"
 	if err := s.telegram.SendMessageWithKeyboard(chatID, msg, keyboard); err != nil {
 		s.logger.Error("ошибка при отправке сообщения с кнопкой",
 			zap.Error(err),
@@ -106,31 +100,19 @@ func (s *Service) sendWelcomeMessage(chatID int64) error {
 
 // handleShareButton - обрабатывает нажатие на кнопку "Отправить другу"
 func (s *Service) handleShareButton(chatID int64) error {
-	// Создаем закодированную ссылку для шаринга сообщения в Telegram
-	// Это специальная ссылка, которая позволяет пользователю выбрать, кому отправить
-	// предварительно заполненное сообщение
-	messageToShare := shareMessageText + "\n\n" + botLink
+	// Отправляем сообщение с Markdown для ручной пересылки
+	if err := s.telegram.SendMarkdownMessage(chatID, shareMessageText); err != nil {
+		s.logger.Error("ошибка при отправке сообщения с Markdown",
+			zap.Error(err),
+			zap.Int64("chat_id", chatID),
+		)
+		return err
+	}
 
-	// URL-кодирование сообщения для ссылки
-	encodedMessage := url.QueryEscape(messageToShare)
-
-	// Создаем ссылку для шаринга в Telegram
-	shareUrl := "https://t.me/share/url?url=" + url.QueryEscape(botLink) + "&text=" + encodedMessage
-
-	// Создаем кнопку с прямой ссылкой для шаринга
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.InlineKeyboardButton{
-				Text: "👥 Отправить другу",
-				URL:  &shareUrl,
-			},
-		),
-	)
-
-	// Отправляем предварительное сообщение
-	msg := "Нажмите на кнопку ниже, чтобы отправить приглашение другу. Откроется окно с выбором получателя:"
-	if err := s.telegram.SendMessageWithInlineKeyboard(chatID, msg, keyboard); err != nil {
-		s.logger.Error("ошибка при отправке сообщения с кнопкой",
+	// Отправляем инструкцию для пересылки
+	instruction := "👆 Перешлите это сообщение другу, чтобы он получил подарок!"
+	if err := s.telegram.SendMessage(chatID, instruction); err != nil {
+		s.logger.Error("ошибка при отправке инструкции",
 			zap.Error(err),
 			zap.Int64("chat_id", chatID),
 		)

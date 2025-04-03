@@ -120,8 +120,9 @@ func (s *OrderService) TakeOrder(orderID string, astrologerID int64, astrologerN
 		astrologerName,
 	)
 
-	// Создаем пустую клавиатуру (без кнопок, так как заказ уже взят)
-	keyboard := tgbotapi.NewInlineKeyboardMarkup()
+	keyboard := tgbotapi.InlineKeyboardMarkup{
+		InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{},
+	}
 
 	err := s.telegram.UpdateOrderMessage(s.channelID, messageID, text, keyboard)
 	if err != nil {
