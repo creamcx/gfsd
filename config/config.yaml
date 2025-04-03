@@ -1,0 +1,7 @@
+telegram:
+  token: "7565405696:AAELJ7RISzLoqYPLvdvlBu8P6njDP0Gflk4"
+  astrologer_channel: "2605944399"
+
+log:
+  level: "debug"
+  sink: "stdout"
