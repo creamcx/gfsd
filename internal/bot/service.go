@@ -6,10 +6,7 @@ import (
 )
 
 // NewService - создает новый экземпляр основного сервиса бота
-func NewService(telegram TelegramClient, logger *zap.Logger, channelID string) *Service {
-	// Создаем сервис заказов
-	orderService := NewOrderService(telegram, logger, channelID)
-
+func NewService(telegram TelegramClient, logger *zap.Logger, orderService *OrderService) *Service {
 	return &Service{
 		telegram:     telegram,
 		logger:       logger,

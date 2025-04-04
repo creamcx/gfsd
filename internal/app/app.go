@@ -3,27 +3,49 @@ package app
 import (
 	"astro-sarafan/internal/bot"
 	"astro-sarafan/internal/config"
+	"astro-sarafan/internal/database"
 	"astro-sarafan/internal/logger"
 	"astro-sarafan/internal/telegram"
 	"go.uber.org/zap"
 )
 
 func Run() error {
+	// Загружаем конфигурацию
 	cfg, err := config.NewConfig("config.yaml")
 	if err != nil {
 		return err
 	}
 
+	// Инициализируем логгер
 	logger, err := logger.New(cfg.Logger)
 	if err != nil {
 		zap.L().Error("не удалось создать логгер", zap.Error(err))
 		return err
 	}
-	tgClient := telegram.NewTelegramClient(cfg.Telegram.Token)
-	botService := bot.NewService(tgClient, logger, cfg.Telegram.AstrologerChannel)
 
+	// Подключаемся к базе данных
+	db, err := database.NewConnection(cfg.Database, logger)
+	if err != nil {
+		logger.Error("не удалось подключиться к базе данных", zap.Error(err))
+		return err
+	}
+
+	// Инициализируем репозитории
+	userRepo := database.NewUserRepository(db, logger)
+	orderRepo := database.NewOrderRepository(db, logger)
+
+	// Инициализируем Telegram клиент
+	tgClient := telegram.NewTelegramClient(cfg.Telegram.Token)
+
+	// Инициализируем сервис заказов
+	orderService := bot.NewOrderService(tgClient, logger, cfg.Telegram.AstrologerChannel, orderRepo, userRepo)
+
+	// Инициализируем основной сервис бота
+	botService := bot.NewService(tgClient, logger, orderService)
+
+	// Запускаем бота
 	if err := botService.Start(); err != nil {
-		logger.Error("failed to start bot: %v", zap.Error(err))
+		logger.Error("failed to start bot", zap.Error(err))
 		return err
 	}
 

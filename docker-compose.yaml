@@ -1,0 +1,32 @@
+version: '3'
+
+services:
+  app:
+    build: .
+    container_name: astro-sarafan
+    depends_on:
+      - postgres
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=astro_sarafan
+    volumes:
+      - ./config/config.yaml:/app/config.yaml
+
+  postgres:
+    image: postgres:15
+    container_name: astro-sarafan-database
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=astro_sarafan
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:54321"
+
+volumes:
+  postgres_data:

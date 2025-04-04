@@ -1,11 +1,11 @@
 package bot
 
 import (
+	"astro-sarafan/internal/database"
 	"astro-sarafan/internal/models"
 	"fmt"
 	"math/rand"
 	"strings"
-	"sync"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -13,42 +13,82 @@ import (
 )
 
 // NewOrderService - создает новый сервис заказов
-func NewOrderService(telegram TelegramClient, logger *zap.Logger, channelID string) *OrderService {
+func NewOrderService(telegram TelegramClient, logger *zap.Logger, channelID string, orderRepo *database.OrderRepository, userRepo *database.UserRepository) *OrderService {
 	return &OrderService{
-		orders:        make(map[string]models.Order),
-		orderMessages: make(map[string]string),
 		telegram:      telegram,
 		logger:        logger,
 		channelID:     channelID,
+		orderRepo:     orderRepo,
+		userRepo:      userRepo,
+		orderMessages: make(map[string]string),
 	}
 }
 
-// Mutex для синхронизации доступа к данным заказов
-var orderMutex sync.RWMutex
-
 // CreateOrder - создает новый заказ на консультацию
 func (s *OrderService) CreateOrder(clientID int64, clientName, clientUser string) (string, error) {
-	orderMutex.Lock()
-	defer orderMutex.Unlock()
+	// Проверяем, есть ли у пользователя уже активная консультация
+	hasConsultation, err := s.userRepo.HasActiveConsultation(clientID)
+	if err != nil {
+		s.logger.Error("ошибка при проверке наличия консультации",
+			zap.Error(err),
+			zap.Int64("client_id", clientID),
+		)
+		return "", err
+	}
+
+	if hasConsultation {
+		s.logger.Info("у пользователя уже есть активная консультация",
+			zap.Int64("client_id", clientID),
+		)
+		return "", database.ErrConsultationExists
+	}
+
+	// Сохраняем пользователя (или обновляем информацию)
+	user := models.User{
+		ChatID:   clientID,
+		Username: clientUser,
+		FullName: clientName,
+	}
+
+	err = s.userRepo.CreateUser(user)
+	if err != nil {
+		s.logger.Error("ошибка при сохранении пользователя",
+			zap.Error(err),
+			zap.Int64("client_id", clientID),
+		)
+		return "", err
+	}
 
 	// Генерируем уникальный ID заказа
 	orderID := generateOrderID()
 
 	// Создаем заказ
 	order := models.Order{
+		ID:        orderID,
+		ClientID:  clientID,
+		Status:    models.OrderStatusNew,
+		CreatedAt: time.Now(),
+	}
+
+	// Сохраняем заказ в репозитории
+	err = s.orderRepo.CreateOrder(order)
+	if err != nil {
+		s.logger.Error("ошибка при создании заказа",
+			zap.Error(err),
+			zap.String("order_id", orderID),
+		)
+		return "", err
+	}
+
+	// Отправляем уведомление в канал астрологов
+	messageID, err := s.telegram.SendOrderToAstrologers(s.channelID, models.Order{
 		ID:         orderID,
 		ClientID:   clientID,
 		ClientName: clientName,
 		ClientUser: clientUser,
 		Status:     models.OrderStatusNew,
 		CreatedAt:  time.Now(),
-	}
-
-	// Сохраняем заказ в хранилище
-	s.orders[orderID] = order
-
-	// Отправляем уведомление в канал астрологов
-	messageID, err := s.telegram.SendOrderToAstrologers(s.channelID, order)
+	})
 	if err != nil {
 		s.logger.Error("ошибка при отправке заказа в канал астрологов",
 			zap.Error(err),
@@ -71,12 +111,17 @@ func (s *OrderService) CreateOrder(clientID int64, clientName, clientUser string
 
 // TakeOrder - взятие заказа в работу астрологом
 func (s *OrderService) TakeOrder(orderID string, astrologerID int64, astrologerName string) error {
-	orderMutex.Lock()
-	defer orderMutex.Unlock()
+	// Получаем заказ из репозитория
+	order, err := s.orderRepo.GetOrderByID(orderID)
+	if err != nil {
+		s.logger.Error("ошибка при получении заказа",
+			zap.Error(err),
+			zap.String("order_id", orderID),
+		)
+		return err
+	}
 
-	// Проверяем, существует ли заказ
-	order, exists := s.orders[orderID]
-	if !exists {
+	if order.ID == "" {
 		return fmt.Errorf("заказ не найден: %s", orderID)
 	}
 
@@ -85,14 +130,15 @@ func (s *OrderService) TakeOrder(orderID string, astrologerID int64, astrologerN
 		return fmt.Errorf("заказ уже взят в работу или завершен: %s", orderID)
 	}
 
-	// Обновляем статус заказа
-	now := time.Now()
-	order.Status = models.OrderStatusInWork
-	order.AstrologerID = astrologerID
-	order.TakenAt = &now
-
-	// Сохраняем обновленный заказ
-	s.orders[orderID] = order
+	// Обновляем статус заказа в репозитории
+	err = s.orderRepo.UpdateOrderStatus(orderID, models.OrderStatusInWork, astrologerID, astrologerName)
+	if err != nil {
+		s.logger.Error("ошибка при обновлении статуса заказа",
+			zap.Error(err),
+			zap.String("order_id", orderID),
+		)
+		return err
+	}
 
 	// Получаем ID сообщения в канале астрологов
 	messageID, exists := s.orderMessages[orderID]
@@ -101,6 +147,16 @@ func (s *OrderService) TakeOrder(orderID string, astrologerID int64, astrologerN
 			zap.String("order_id", orderID),
 		)
 		return fmt.Errorf("не найдено сообщение для заказа: %s", orderID)
+	}
+
+	// Получаем обновленный заказ
+	updatedOrder, err := s.orderRepo.GetOrderByID(orderID)
+	if err != nil {
+		s.logger.Error("ошибка при получении обновленного заказа",
+			zap.Error(err),
+			zap.String("order_id", orderID),
+		)
+		return err
 	}
 
 	// Обновляем сообщение в канале астрологов
@@ -112,11 +168,11 @@ func (s *OrderService) TakeOrder(orderID string, astrologerID int64, astrologerN
 			"*Дата заказа:* %s\n\n"+
 			"*Взят в работу:* %s\n"+
 			"*Астролог:* %s",
-		order.ID,
-		order.ClientName,
-		order.ClientUser,
-		order.CreatedAt.Format("02.01.2006 15:04"),
-		now.Format("02.01.2006 15:04"),
+		updatedOrder.ID,
+		updatedOrder.ClientName,
+		updatedOrder.ClientUser,
+		updatedOrder.CreatedAt.Format("02.01.2006 15:04"),
+		updatedOrder.TakenAt.Format("02.01.2006 15:04"),
 		astrologerName,
 	)
 
@@ -124,7 +180,7 @@ func (s *OrderService) TakeOrder(orderID string, astrologerID int64, astrologerN
 		InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{},
 	}
 
-	err := s.telegram.UpdateOrderMessage(s.channelID, messageID, text, keyboard)
+	err = s.telegram.UpdateOrderMessage(s.channelID, messageID, text, keyboard)
 	if err != nil {
 		s.logger.Error("ошибка при обновлении сообщения о заказе",
 			zap.Error(err),
@@ -134,13 +190,13 @@ func (s *OrderService) TakeOrder(orderID string, astrologerID int64, astrologerN
 	}
 
 	// Отправляем уведомление клиенту о том, что его запрос взят в работу
-	err = s.telegram.SendMessage(order.ClientID, fmt.Sprintf(
+	err = s.telegram.SendMessage(updatedOrder.ClientID, fmt.Sprintf(
 		"✨ Ваш запрос на астрологическую консультацию принят в работу! Астролог скоро свяжется с вами.",
 	))
 	if err != nil {
 		s.logger.Error("ошибка при отправке уведомления клиенту",
 			zap.Error(err),
-			zap.Int64("client_id", order.ClientID),
+			zap.Int64("client_id", updatedOrder.ClientID),
 		)
 	}
 
@@ -150,15 +206,6 @@ func (s *OrderService) TakeOrder(orderID string, astrologerID int64, astrologerN
 	)
 
 	return nil
-}
-
-// GetOrder - получение заказа по ID
-func (s *OrderService) GetOrder(orderID string) (models.Order, bool) {
-	orderMutex.RLock()
-	defer orderMutex.RUnlock()
-
-	order, exists := s.orders[orderID]
-	return order, exists
 }
 
 // generateOrderID - генерирует уникальный ID заказа

@@ -2,16 +2,20 @@ package telegram
 
 import (
 	"astro-sarafan/internal/models"
+	"bytes"
+	"encoding/json"
 	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"log"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
 )
 
 type TelegramClient struct {
-	bot *tgbotapi.BotAPI
+	bot    *tgbotapi.BotAPI
+	client *http.Client
 }
 
 func NewTelegramClient(token string) *TelegramClient {
@@ -21,7 +25,8 @@ func NewTelegramClient(token string) *TelegramClient {
 	}
 
 	return &TelegramClient{
-		bot: bot,
+		bot:    bot,
+		client: &http.Client{},
 	}
 }
 
@@ -76,6 +81,42 @@ func (t *TelegramClient) UpdateMessageReplyMarkup(chatID int64, messageID string
 	editMsg := tgbotapi.NewEditMessageReplyMarkup(chatID, msgID, keyboard)
 	_, err = t.bot.Send(editMsg)
 	return err
+}
+
+func (t *TelegramClient) SendCustomMessage(params map[string]interface{}) error {
+	// Формируем URL для Telegram API
+	url := "https://api.telegram.org/bot" + t.bot.Token + "/sendMessage"
+
+	// Преобразуем параметры в JSON
+	jsonData, err := json.Marshal(params)
+	if err != nil {
+		return err
+	}
+
+	// Создаем HTTP запрос
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return err
+	}
+
+	// Устанавливаем заголовок Content-Type
+	req.Header.Set("Content-Type", "application/json")
+
+	// Выполняем запрос
+	resp, err := t.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	// Проверяем статус ответа
+	if resp.StatusCode != http.StatusOK {
+		// Здесь можно добавить более детальную обработку ошибок,
+		// декодировав тело ответа Telegram API
+		return fmt.Errorf("telegram API returned non-OK status: %d", resp.StatusCode)
+	}
+
+	return nil
 }
 
 // Отправка сообщения в канал

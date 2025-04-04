@@ -1,7 +1,9 @@
 package bot
 
 import (
+	"astro-sarafan/internal/database"
 	"astro-sarafan/internal/models"
+	"errors"
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -34,6 +36,9 @@ const (
 
 	// Ссылка для перехода к боту с командой на консультацию
 	botLink = "https://t.me/" + botUsername + "?start=astro"
+
+	// Сообщение о том, что консультация уже запрошена
+	consultationExistsMessage = "⚠️ Вы уже оставили заявку на астрологическую консультацию. Каждый пользователь может получить только одну бесплатную консультацию."
 )
 
 // HandleUpdate - основной обработчик входящих сообщений
@@ -98,9 +103,7 @@ func (s *Service) sendWelcomeMessage(chatID int64) error {
 	return nil
 }
 
-// handleShareButton - обрабатывает нажатие на кнопку "Отправить другу"
 func (s *Service) handleShareButton(chatID int64) error {
-	// Отправляем сообщение с Markdown для ручной пересылки
 	if err := s.telegram.SendMarkdownMessage(chatID, shareMessageText); err != nil {
 		s.logger.Error("ошибка при отправке сообщения с Markdown",
 			zap.Error(err),
@@ -124,27 +127,27 @@ func (s *Service) handleShareButton(chatID int64) error {
 
 // handleConsultationRequest - обработка запроса на консультацию
 func (s *Service) handleConsultationRequest(chatID int64, clientName, clientUser string) error {
+	// Создаем заказ
+	orderID, err := s.orderService.CreateOrder(chatID, clientName, clientUser)
+
+	if err != nil {
+		if errors.Is(err, database.ErrConsultationExists) {
+			return s.telegram.SendMessage(chatID, consultationExistsMessage)
+		}
+
+		s.logger.Error("ошибка при создании заказа",
+			zap.Error(err),
+			zap.Int64("client_id", chatID),
+		)
+		return s.telegram.SendMessage(chatID, "Произошла ошибка при обработке запроса. Пожалуйста, попробуйте позже.")
+	}
+
 	// Отправляем сообщение о получении запроса
-	err := s.telegram.SendMessage(chatID, "✨ Спасибо за ваш запрос на астрологическую консультацию! Наш астролог скоро получит уведомление и свяжется с вами.")
+	err = s.telegram.SendMessage(chatID, "✨ Спасибо за ваш запрос на астрологическую консультацию! Наш астролог скоро получит уведомление и свяжется с вами.")
 	if err != nil {
 		s.logger.Error("ошибка при отправке сообщения о получении запроса",
 			zap.Error(err),
 			zap.Int64("chat_id", chatID),
-		)
-		return err
-	}
-
-	// Если имя не указано, используем значение по умолчанию
-	if clientName == "" {
-		clientName = "Пользователь"
-	}
-
-	// Создаем заказ и отправляем его в канал астрологов
-	orderID, err := s.orderService.CreateOrder(chatID, clientName, clientUser)
-	if err != nil {
-		s.logger.Error("ошибка при создании заказа",
-			zap.Error(err),
-			zap.Int64("client_id", chatID),
 		)
 		return err
 	}

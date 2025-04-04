@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"astro-sarafan/internal/database"
 	"astro-sarafan/internal/models"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.uber.org/zap"
@@ -17,6 +18,7 @@ type TelegramClient interface {
 	SendOrderToAstrologers(channelID string, order models.Order) (string, error)
 	UpdateMessageReplyMarkup(chatID int64, messageID string, keyboard tgbotapi.InlineKeyboardMarkup) error
 	UpdateOrderMessage(channelID string, messageID string, text string, keyboard tgbotapi.InlineKeyboardMarkup) error
+	SendCustomMessage(params map[string]interface{}) error
 
 	// Метод объединенного обработчика обновлений
 	StartBot() (chan models.User, chan models.CallbackQuery, error)
@@ -40,4 +42,6 @@ type OrderService struct {
 	telegram      TelegramClient
 	logger        *zap.Logger
 	channelID     string
+	orderRepo     *database.OrderRepository
+	userRepo      *database.UserRepository
 }
