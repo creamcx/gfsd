@@ -134,7 +134,6 @@ func (t *TelegramClient) SendMessageToChannel(channelID string, text string) err
 	return err
 }
 
-// Отправка заказа в канал астрологов
 func (t *TelegramClient) SendOrderToAstrologers(channelID string, order models.Order) (string, error) {
 	// Если channelID не содержит "-100" в начале, добавим
 	if !strings.HasPrefix(channelID, "-100") {
@@ -147,18 +146,19 @@ func (t *TelegramClient) SendOrderToAstrologers(channelID string, order models.O
 	}
 
 	// Составляем текст сообщения для астрологов
-	text := fmt.Sprintf(
-		"🌟 *НОВЫЙ ЗАКАЗ НА КОНСУЛЬТАЦИЮ* 🌟\n\n"+
-			"*ID заказа:* `%s`\n"+
-			"*Клиент:* %s\n"+
-			"*Username:* @%s\n"+
-			"*Дата заказа:* %s\n\n"+
-			"Нажмите кнопку ниже, чтобы взять заказ в работу.",
-		order.ID,
-		order.ClientName,
-		order.ClientUser,
-		order.CreatedAt.Format("02.01.2006 15:04"),
-	)
+	textBuilder := strings.Builder{}
+	textBuilder.WriteString("🌟 *НОВЫЙ ЗАКАЗ НА КОНСУЛЬТАЦИЮ* 🌟\n\n")
+	textBuilder.WriteString(fmt.Sprintf("*ID заказа:* `%s`\n", order.ID))
+	textBuilder.WriteString(fmt.Sprintf("*Клиент:* %s\n", order.ClientName))
+	textBuilder.WriteString(fmt.Sprintf("*Username:* @%s\n", order.ClientUser))
+	textBuilder.WriteString(fmt.Sprintf("*Дата заказа:* %s\n", order.CreatedAt.Format("02.01.2006 15:04")))
+
+	// Добавляем информацию о рефереле, если есть
+	if order.ReferrerID != 0 {
+		textBuilder.WriteString(fmt.Sprintf("\n*Приглашен пользователем:* %s\n", order.ReferrerName))
+	}
+
+	textBuilder.WriteString("\nНажмите кнопку ниже, чтобы взять заказ в работу.")
 
 	// Создаем клавиатуру с кнопкой "Взять в работу"
 	takeOrderButton := tgbotapi.NewInlineKeyboardButtonData("🔮 Взять в работу", "take_order:"+order.ID)
@@ -166,7 +166,7 @@ func (t *TelegramClient) SendOrderToAstrologers(channelID string, order models.O
 		tgbotapi.NewInlineKeyboardRow(takeOrderButton),
 	)
 
-	msg := tgbotapi.NewMessage(chatID, text)
+	msg := tgbotapi.NewMessage(chatID, textBuilder.String())
 	msg.ParseMode = "Markdown"
 	msg.ReplyMarkup = keyboard
 

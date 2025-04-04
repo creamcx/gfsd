@@ -29,7 +29,6 @@ func NewOrderRepository(db *sqlx.DB, logger *zap.Logger) *OrderRepository {
 	}
 }
 
-// CreateOrder создает новый заказ в базе данных
 func (r *OrderRepository) CreateOrder(order models.Order) error {
 	// Начинаем транзакцию
 	tx, err := r.db.Beginx()
@@ -58,13 +57,14 @@ func (r *OrderRepository) CreateOrder(order models.Order) error {
 		return ErrConsultationExists
 	}
 
-	// Создаем заказ
+	// Создаем заказ с учетом реферера
 	query := `
-		INSERT INTO orders (id, client_id, status, created_at)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO orders (id, client_id, status, created_at, referrer_id, referrer_name)
+		VALUES ($1, $2, $3, $4, $5, $6)
 	`
 
-	_, err = tx.Exec(query, order.ID, order.ClientID, order.Status, order.CreatedAt)
+	_, err = tx.Exec(query, order.ID, order.ClientID, order.Status, order.CreatedAt,
+		order.ReferrerID, order.ReferrerName)
 	if err != nil {
 		r.logger.Error("Ошибка при создании заказа",
 			zap.Error(err),

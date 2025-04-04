@@ -1,16 +1,18 @@
 package bot
 
 import (
+	"astro-sarafan/internal/database"
 	"go.uber.org/zap"
 	"strings"
 )
 
 // NewService - создает новый экземпляр основного сервиса бота
-func NewService(telegram TelegramClient, logger *zap.Logger, orderService *OrderService) *Service {
+func NewService(telegram TelegramClient, logger *zap.Logger, orderService *OrderService, userRepo *database.UserRepository) *Service {
 	return &Service{
 		telegram:     telegram,
 		logger:       logger,
 		orderService: orderService,
+		userRepo:     userRepo,
 	}
 }
 

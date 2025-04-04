@@ -33,6 +33,7 @@ type Service struct {
 	telegram     TelegramClient
 	logger       *zap.Logger
 	orderService *OrderService
+	userRepo     *database.UserRepository
 }
 
 // OrderService - структура сервиса заказов

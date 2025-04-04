@@ -41,7 +41,7 @@ func Run() error {
 	orderService := bot.NewOrderService(tgClient, logger, cfg.Telegram.AstrologerChannel, orderRepo, userRepo)
 
 	// Инициализируем основной сервис бота
-	botService := bot.NewService(tgClient, logger, orderService)
+	botService := bot.NewService(tgClient, logger, orderService, userRepo)
 
 	// Запускаем бота
 	if err := botService.Start(); err != nil {

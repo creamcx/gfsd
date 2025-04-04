@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"database/sql"
+	"time"
+)
 
 type OrderStatus string
 
@@ -11,21 +14,32 @@ const (
 )
 
 type User struct {
-	ChatID   int64
-	Text     string
-	Username string
-	FullName string
+	ChatID       int64    `db:"chat_id"`
+	Username     string   `db:"username"`
+	FullName     string   `db:"full_name"`
+	ReferralCode string   `db:"referral_code"`
+	Text         string   `db:"-"` // Поле не из базы данных, пропускаем его при сопоставлении
+	Contact      *Contact `db:"-"` // Поле не из базы данных, пропускаем его при сопоставлении
+}
+
+type Contact struct {
+	PhoneNumber string
+	FirstName   string
+	LastName    string
 }
 
 type Order struct {
-	ID           string      `json:"id"`
-	ClientID     int64       `json:"client_id"`   // ID пользователя в Telegram
-	ClientName   string      `json:"client_name"` // Имя пользователя
-	ClientUser   string      `json:"client_user"` // Username пользователя
-	Status       OrderStatus `json:"status"`
-	CreatedAt    time.Time   `json:"created_at"`
-	AstrologerID int64       `json:"astrologer_id,omitempty"` // ID астролога, который взял заказ
-	TakenAt      *time.Time  `json:"taken_at,omitempty"`      // Когда заказ был взят в работу
+	ID             string        `db:"id" json:"id"`
+	ClientID       int64         `db:"client_id" json:"client_id"`
+	ClientName     string        `db:"-" json:"client_name"` // Поле не из основной таблицы
+	ClientUser     string        `db:"-" json:"client_user"` // Поле не из основной таблицы
+	Status         OrderStatus   `db:"status" json:"status"`
+	CreatedAt      time.Time     `db:"created_at" json:"created_at"`
+	AstrologerID   sql.NullInt64 `db:"astrologer_id"`
+	AstrologerName string        `db:"astrologer_name" json:"astrologer_name,omitempty"`
+	TakenAt        *time.Time    `db:"taken_at" json:"taken_at,omitempty"`
+	ReferrerID     int64         `db:"referrer_id" json:"referrer_id,omitempty"`
+	ReferrerName   string        `db:"referrer_name" json:"referrer_name,omitempty"`
 }
 
 type CallbackQuery struct {

@@ -7,9 +7,9 @@ log:
   sink: "stdout"
 
 database:
-  host: "postgres"
+  host: "postgres" 
   port: 5432
   user: "postgres"
   password: "postgres"
-  dbname: "astro_sarafan"
+  dbname: "postgres"
   sslmode: "disable"

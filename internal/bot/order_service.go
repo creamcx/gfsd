@@ -25,7 +25,7 @@ func NewOrderService(telegram TelegramClient, logger *zap.Logger, channelID stri
 }
 
 // CreateOrder - создает новый заказ на консультацию
-func (s *OrderService) CreateOrder(clientID int64, clientName, clientUser string) (string, error) {
+func (s *OrderService) CreateOrder(clientID int64, clientName, clientUser string, referrerID int64, referrerName string) (string, error) {
 	// Проверяем, есть ли у пользователя уже активная консультация
 	hasConsultation, err := s.userRepo.HasActiveConsultation(clientID)
 	if err != nil {
@@ -62,12 +62,14 @@ func (s *OrderService) CreateOrder(clientID int64, clientName, clientUser string
 	// Генерируем уникальный ID заказа
 	orderID := generateOrderID()
 
-	// Создаем заказ
+	// Создаем заказ с информацией о реферере
 	order := models.Order{
-		ID:        orderID,
-		ClientID:  clientID,
-		Status:    models.OrderStatusNew,
-		CreatedAt: time.Now(),
+		ID:           orderID,
+		ClientID:     clientID,
+		Status:       models.OrderStatusNew,
+		CreatedAt:    time.Now(),
+		ReferrerID:   referrerID,
+		ReferrerName: referrerName,
 	}
 
 	// Сохраняем заказ в репозитории
@@ -80,15 +82,20 @@ func (s *OrderService) CreateOrder(clientID int64, clientName, clientUser string
 		return "", err
 	}
 
+	// Обновляем клиента для заказа перед отправкой в канал
+	orderWithClient := models.Order{
+		ID:           orderID,
+		ClientID:     clientID,
+		ClientName:   clientName,
+		ClientUser:   clientUser,
+		Status:       models.OrderStatusNew,
+		CreatedAt:    time.Now(),
+		ReferrerID:   referrerID,
+		ReferrerName: referrerName,
+	}
+
 	// Отправляем уведомление в канал астрологов
-	messageID, err := s.telegram.SendOrderToAstrologers(s.channelID, models.Order{
-		ID:         orderID,
-		ClientID:   clientID,
-		ClientName: clientName,
-		ClientUser: clientUser,
-		Status:     models.OrderStatusNew,
-		CreatedAt:  time.Now(),
-	})
+	messageID, err := s.telegram.SendOrderToAstrologers(s.channelID, orderWithClient)
 	if err != nil {
 		s.logger.Error("ошибка при отправке заказа в канал астрологов",
 			zap.Error(err),
@@ -104,6 +111,7 @@ func (s *OrderService) CreateOrder(clientID int64, clientName, clientUser string
 		zap.String("order_id", orderID),
 		zap.Int64("client_id", clientID),
 		zap.String("message_id", messageID),
+		zap.Int64("referrer_id", referrerID),
 	)
 
 	return orderID, nil

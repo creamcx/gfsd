@@ -4,6 +4,8 @@ import (
 	"astro-sarafan/internal/models"
 	"database/sql"
 	"errors"
+	"math/rand"
+	"strings"
 
 	"github.com/jmoiron/sqlx"
 	"go.uber.org/zap"
@@ -45,10 +47,60 @@ func (r *UserRepository) CreateUser(user models.User) error {
 	return nil
 }
 
+func (r *UserRepository) GenerateReferralCode(chatID int64) (string, error) {
+	// Генерируем уникальный код из 8 символов
+	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	const codeLength = 8
+
+	var referralCode strings.Builder
+	for i := 0; i < codeLength; i++ {
+		referralCode.WriteByte(charset[rand.Intn(len(charset))])
+	}
+
+	// Сохраняем код в базе данных
+	query := `
+		UPDATE users 
+		SET referral_code = $1 
+		WHERE chat_id = $2
+		RETURNING referral_code
+	`
+
+	var savedCode string
+	err := r.db.QueryRow(query, referralCode.String(), chatID).Scan(&savedCode)
+	if err != nil {
+		r.logger.Error("Ошибка при сохранении реферального кода",
+			zap.Error(err),
+			zap.Int64("chat_id", chatID),
+		)
+		return "", err
+	}
+
+	return savedCode, nil
+}
+
+func (r *UserRepository) GetUserByReferralCode(referralCode string) (models.User, error) {
+	var user models.User
+	query := `SELECT chat_id, username, full_name, referral_code FROM users WHERE referral_code = $1`
+
+	err := r.db.Get(&user, query, referralCode)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return models.User{}, nil // Пользователь не найден
+		}
+		r.logger.Error("Ошибка при получении пользователя по реферальному коду",
+			zap.Error(err),
+			zap.String("referral_code", referralCode),
+		)
+		return models.User{}, err
+	}
+
+	return user, nil
+}
+
 // GetUserByID получает пользователя по chat_id
 func (r *UserRepository) GetUserByID(chatID int64) (models.User, error) {
 	var user models.User
-	query := `SELECT chat_id, username, full_name FROM users WHERE chat_id = $1`
+	query := `SELECT chat_id, username, full_name, referral_code FROM users WHERE chat_id = $1`
 
 	err := r.db.Get(&user, query, chatID)
 	if err != nil {

@@ -7,11 +7,11 @@ services:
     depends_on:
       - postgres
     environment:
-      - DB_HOST=postgres
+      - DB_HOST=localhost
       - DB_PORT=5432
       - DB_USER=postgres
       - DB_PASSWORD=postgres
-      - DB_NAME=astro_sarafan
+      - DB_NAME=postgres
     volumes:
       - ./config/config.yaml:/app/config.yaml
 
@@ -21,12 +21,12 @@ services:
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=astro_sarafan
+      - POSTGRES_DB=postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
-      - "5432:54321"
+      - "15432:5432"
 
 volumes:
   postgres_data:

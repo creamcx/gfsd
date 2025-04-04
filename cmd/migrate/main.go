@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS users (
     chat_id BIGINT UNIQUE NOT NULL,
     username VARCHAR(255),
     full_name VARCHAR(255),
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    referral_code VARCHAR(20) UNIQUE
 );
 
 -- Создание таблицы для хранения заказов
@@ -29,18 +30,22 @@ CREATE TABLE IF NOT EXISTS orders (
     taken_at TIMESTAMP,
     astrologer_id BIGINT,
     astrologer_name VARCHAR(255),
-    CONSTRAINT unique_client_consultation UNIQUE (client_id) -- Ограничение: один клиент - одна консультация
+    referrer_id BIGINT,
+    referrer_name VARCHAR(255),
+    CONSTRAINT unique_client_consultation UNIQUE (client_id)
 );
 
 -- Индексы для ускорения запросов
 CREATE INDEX IF NOT EXISTS idx_users_chat_id ON users(chat_id);
+CREATE INDEX IF NOT EXISTS idx_users_referral_code ON users(referral_code);
 CREATE INDEX IF NOT EXISTS idx_orders_client_id ON orders(client_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_orders_referrer_id ON orders(referrer_id);
 `
 
 func main() {
 	// Загружаем конфигурацию
-	cfg, err := config.NewConfig("config.yaml")
+	cfg, err := config.NewConfig("config/config.yaml")
 	if err != nil {
 		log.Fatalf("Ошибка загрузки конфигурации: %v", err)
 	}
