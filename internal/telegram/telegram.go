@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"astro-sarafan/internal/models"
+	"astro-sarafan/internal/utils"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -135,6 +136,38 @@ func (t *TelegramClient) SendMessageToChannel(channelID string, text string) err
 }
 
 func (t *TelegramClient) SendOrderToAstrologers(channelID string, order models.Order) (string, error) {
+	// Корректируем имя пользователя и клиента
+	clientUser := order.ClientUser
+	if clientUser == "" {
+		clientUser = "unnamed_user"
+	}
+	clientName := order.ClientName
+	if clientName == "" {
+		clientName = "Unnamed User"
+	}
+
+	// Составляем текст сообщения для астрологов
+	textBuilder := strings.Builder{}
+	textBuilder.WriteString("🌟 *НОВЫЙ ЗАКАЗ НА КОНСУЛЬТАЦИЮ* 🌟\n\n")
+	textBuilder.WriteString(fmt.Sprintf("*ID заказа:* `%s`\n", order.ID))
+	textBuilder.WriteString(fmt.Sprintf("*Клиент:* %s\n", utils.EscapeMarkdownV2(clientName)))
+	textBuilder.WriteString(fmt.Sprintf("*Username:* @%s\n", utils.EscapeMarkdownV2(clientUser)))
+	textBuilder.WriteString(fmt.Sprintf("*Дата заказа:* %s\n", order.CreatedAt.Format("02.01.2006 15:04")))
+
+	// Добавляем информацию о реферере, если есть
+	if order.ReferrerID != 0 {
+		textBuilder.WriteString(fmt.Sprintf("\n*Приглашен пользователем:* %s\n",
+			utils.EscapeMarkdownV2(order.ReferrerName)))
+	}
+
+	textBuilder.WriteString("\n*Нажмите кнопку ниже, чтобы взять заказ в работу.*")
+
+	// Создаем клавиатуру с кнопкой "Взять в работу"
+	takeOrderButton := tgbotapi.NewInlineKeyboardButtonData("🔮 Взять в работу", "take_order:"+order.ID)
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(takeOrderButton),
+	)
+
 	// Если channelID не содержит "-100" в начале, добавим
 	if !strings.HasPrefix(channelID, "-100") {
 		channelID = "-100" + channelID
@@ -145,27 +178,7 @@ func (t *TelegramClient) SendOrderToAstrologers(channelID string, order models.O
 		return "", fmt.Errorf("invalid channel ID: %v", err)
 	}
 
-	// Составляем текст сообщения для астрологов
-	textBuilder := strings.Builder{}
-	textBuilder.WriteString("🌟 *НОВЫЙ ЗАКАЗ НА КОНСУЛЬТАЦИЮ* 🌟\n\n")
-	textBuilder.WriteString(fmt.Sprintf("*ID заказа:* `%s`\n", order.ID))
-	textBuilder.WriteString(fmt.Sprintf("*Клиент:* %s\n", order.ClientName))
-	textBuilder.WriteString(fmt.Sprintf("*Username:* @%s\n", order.ClientUser))
-	textBuilder.WriteString(fmt.Sprintf("*Дата заказа:* %s\n", order.CreatedAt.Format("02.01.2006 15:04")))
-
-	// Добавляем информацию о рефереле, если есть
-	if order.ReferrerID != 0 {
-		textBuilder.WriteString(fmt.Sprintf("\n*Приглашен пользователем:* %s\n", order.ReferrerName))
-	}
-
-	textBuilder.WriteString("\nНажмите кнопку ниже, чтобы взять заказ в работу.")
-
-	// Создаем клавиатуру с кнопкой "Взять в работу"
-	takeOrderButton := tgbotapi.NewInlineKeyboardButtonData("🔮 Взять в работу", "take_order:"+order.ID)
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(takeOrderButton),
-	)
-
+	// Отправляем сообщение
 	msg := tgbotapi.NewMessage(chatID, textBuilder.String())
 	msg.ParseMode = "Markdown"
 	msg.ReplyMarkup = keyboard
@@ -173,7 +186,7 @@ func (t *TelegramClient) SendOrderToAstrologers(channelID string, order models.O
 	// Отправляем сообщение и получаем его ID
 	sentMsg, err := t.bot.Send(msg)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error sending message to astrologers: %v", err)
 	}
 
 	// Возвращаем ID отправленного сообщения для дальнейшего обновления
@@ -197,12 +210,30 @@ func (t *TelegramClient) UpdateOrderMessage(channelID string, messageID string, 
 		return fmt.Errorf("invalid message ID: %v", err)
 	}
 
+	// Создаем конфигурацию для редактирования сообщения
 	editMsg := tgbotapi.NewEditMessageText(chatID, msgID, text)
 	editMsg.ParseMode = "Markdown"
-	editMsg.ReplyMarkup = &keyboard
 
+	// Если клавиатура пустая, удаляем ее
+	if len(keyboard.InlineKeyboard) == 0 {
+		editMsg.ReplyMarkup = nil
+	} else {
+		editMsg.ReplyMarkup = &keyboard
+	}
+
+	// Логируем попытку обновления сообщения
+	log.Printf("Обновление сообщения: chat_id=%d, message_id=%d, text=%s",
+		chatID, msgID, text,
+	)
+
+	// Отправляем запрос на обновление
 	_, err = t.bot.Send(editMsg)
-	return err
+	if err != nil {
+		log.Printf("Ошибка при обновлении сообщения: %v", err)
+		return err
+	}
+
+	return nil
 }
 
 // Единый метод обработки обновлений

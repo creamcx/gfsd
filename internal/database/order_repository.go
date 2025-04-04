@@ -4,6 +4,7 @@ import (
 	"astro-sarafan/internal/models"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -83,19 +84,31 @@ func (r *OrderRepository) CreateOrder(order models.Order) error {
 	return nil
 }
 
-// GetOrderByID получает заказ по ID
 func (r *OrderRepository) GetOrderByID(orderID string) (models.Order, error) {
 	var order models.Order
 	query := `
-		SELECT id, client_id, status, created_at, taken_at, astrologer_id
-		FROM orders
-		WHERE id = $1
-	`
+        SELECT 
+            o.id, 
+            o.client_id, 
+            o.status, 
+            o.created_at, 
+            o.taken_at, 
+            COALESCE(o.astrologer_id, 0) as astrologer_id,
+            COALESCE(o.astrologer_name, '') as astrologer_name,
+            COALESCE(u.username, '') as client_user, 
+            COALESCE(u.full_name, '') as client_name
+        FROM orders o
+        LEFT JOIN users u ON o.client_id = u.chat_id
+        WHERE o.id = $1
+    `
 
 	err := r.db.Get(&order, query, orderID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return models.Order{}, nil // Заказ не найден
+			r.logger.Warn("Заказ не найден",
+				zap.String("order_id", orderID),
+			)
+			return models.Order{}, nil
 		}
 		r.logger.Error("Ошибка при получении заказа",
 			zap.Error(err),
@@ -104,40 +117,115 @@ func (r *OrderRepository) GetOrderByID(orderID string) (models.Order, error) {
 		return models.Order{}, err
 	}
 
+	// Логируем полученную информацию о заказе
+	r.logger.Info("Получен заказ",
+		zap.String("order_id", order.ID),
+		zap.Int64("client_id", order.ClientID),
+		zap.String("client_name", order.ClientName),
+		zap.String("client_user", order.ClientUser),
+	)
+
 	return order, nil
 }
 
-// UpdateOrderStatus обновляет статус заказа
 func (r *OrderRepository) UpdateOrderStatus(orderID string, status models.OrderStatus, astrologerID int64, astrologerName string) error {
-	var query string
-	var args []interface{}
+	// Начинаем транзакцию
+	tx, err := r.db.Beginx()
+	if err != nil {
+		r.logger.Error("Ошибка при начале транзакции",
+			zap.Error(err),
+			zap.String("order_id", orderID),
+		)
+		return err
+	}
+	defer tx.Rollback() // Откатываем транзакцию в случае ошибки
 
-	if status == models.OrderStatusInWork {
-		now := time.Now()
-		query = `
-			UPDATE orders
-			SET status = $1, taken_at = $2, astrologer_id = $3, astrologer_name = $4
-			WHERE id = $5
-		`
-		args = []interface{}{status, now, astrologerID, astrologerName, orderID}
-	} else {
-		query = `
-			UPDATE orders
-			SET status = $1
-			WHERE id = $2
-		`
-		args = []interface{}{status, orderID}
+	// Проверяем текущий статус заказа
+	var currentStatus string
+	err = tx.Get(&currentStatus, "SELECT status FROM orders WHERE id = $1", orderID)
+	if err != nil {
+		r.logger.Error("Ошибка при проверке текущего статуса заказа",
+			zap.Error(err),
+			zap.String("order_id", orderID),
+		)
+		return err
 	}
 
-	_, err := r.db.Exec(query, args...)
+	// Логируем текущий статус
+	r.logger.Info("Текущий статус заказа",
+		zap.String("order_id", orderID),
+		zap.String("current_status", currentStatus),
+	)
+
+	// Проверяем, можно ли изменить статус
+	if currentStatus != string(models.OrderStatusNew) {
+		r.logger.Warn("Попытка изменить статус неактивного заказа",
+			zap.String("order_id", orderID),
+			zap.String("current_status", currentStatus),
+			zap.String("new_status", string(status)),
+		)
+		return fmt.Errorf("заказ уже изменен: %s", orderID)
+	}
+
+	// Обновляем статус заказа
+	now := time.Now()
+	query := `
+        UPDATE orders
+        SET 
+            status = $1, 
+            taken_at = $2, 
+            astrologer_id = $3, 
+            astrologer_name = $4
+        WHERE id = $5 AND status = $6
+    `
+
+	result, err := tx.Exec(
+		query,
+		status,
+		now,
+		astrologerID,
+		astrologerName,
+		orderID,
+		models.OrderStatusNew,
+	)
 	if err != nil {
 		r.logger.Error("Ошибка при обновлении статуса заказа",
 			zap.Error(err),
 			zap.String("order_id", orderID),
-			zap.String("status", string(status)),
 		)
 		return err
 	}
+
+	// Проверяем, что строка была обновлена
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		r.logger.Error("Ошибка при проверке количества обновленных строк",
+			zap.Error(err),
+			zap.String("order_id", orderID),
+		)
+		return err
+	}
+
+	if rowsAffected == 0 {
+		r.logger.Warn("Не удалось обновить статус заказа",
+			zap.String("order_id", orderID),
+		)
+		return fmt.Errorf("не удалось обновить статус заказа: %s", orderID)
+	}
+
+	// Фиксируем транзакцию
+	if err := tx.Commit(); err != nil {
+		r.logger.Error("Ошибка при фиксации транзакции",
+			zap.Error(err),
+			zap.String("order_id", orderID),
+		)
+		return err
+	}
+
+	r.logger.Info("Статус заказа успешно обновлен",
+		zap.String("order_id", orderID),
+		zap.String("new_status", string(status)),
+	)
 
 	return nil
 }

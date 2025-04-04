@@ -3,12 +3,13 @@ package bot
 import (
 	"astro-sarafan/internal/database"
 	"astro-sarafan/internal/models"
+	"astro-sarafan/internal/utils"
 	"fmt"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"math/rand"
 	"strings"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"go.uber.org/zap"
 )
 
@@ -24,24 +25,15 @@ func NewOrderService(telegram TelegramClient, logger *zap.Logger, channelID stri
 	}
 }
 
-// CreateOrder - создает новый заказ на консультацию
 func (s *OrderService) CreateOrder(clientID int64, clientName, clientUser string, referrerID int64, referrerName string) (string, error) {
-	// Проверяем, есть ли у пользователя уже активная консультация
-	hasConsultation, err := s.userRepo.HasActiveConsultation(clientID)
-	if err != nil {
-		s.logger.Error("ошибка при проверке наличия консультации",
-			zap.Error(err),
-			zap.Int64("client_id", clientID),
-		)
-		return "", err
-	}
-
-	if hasConsultation {
-		s.logger.Info("у пользователя уже есть активная консультация",
-			zap.Int64("client_id", clientID),
-		)
-		return "", database.ErrConsultationExists
-	}
+	// Логируем входящие данные
+	s.logger.Info("Создание заказа",
+		zap.Int64("client_id", clientID),
+		zap.String("client_name", clientName),
+		zap.String("client_user", clientUser),
+		zap.Int64("referrer_id", referrerID),
+		zap.String("referrer_name", referrerName),
+	)
 
 	// Сохраняем пользователя (или обновляем информацию)
 	user := models.User{
@@ -50,7 +42,7 @@ func (s *OrderService) CreateOrder(clientID int64, clientName, clientUser string
 		FullName: clientName,
 	}
 
-	err = s.userRepo.CreateUser(user)
+	err := s.userRepo.CreateUser(user)
 	if err != nil {
 		s.logger.Error("ошибка при сохранении пользователя",
 			zap.Error(err),
@@ -117,84 +109,152 @@ func (s *OrderService) CreateOrder(clientID int64, clientName, clientUser string
 	return orderID, nil
 }
 
-// TakeOrder - взятие заказа в работу астрологом
 func (s *OrderService) TakeOrder(orderID string, astrologerID int64, astrologerName string) error {
 	// Получаем заказ из репозитория
 	order, err := s.orderRepo.GetOrderByID(orderID)
 	if err != nil {
-		s.logger.Error("ошибка при получении заказа",
+		s.logger.Error("Ошибка при получении заказа",
 			zap.Error(err),
 			zap.String("order_id", orderID),
 		)
 		return err
 	}
 
+	// Корректируем данные
+	clientName := order.ClientName
+	if clientName == "" {
+		clientName = "Unnamed User"
+	}
+	clientUser := order.ClientUser
+	if clientUser == "" {
+		clientUser = "unnamed_user"
+	}
+	astrologerNameSafe := utils.EscapeMarkdownV2(astrologerName)
+	clientNameSafe := utils.EscapeMarkdownV2(clientName)
+	clientUserSafe := utils.EscapeMarkdownV2(clientUser)
+
+	// Логируем информацию о заказе перед обновлением
+	s.logger.Info("Информация о заказе перед обновлением",
+		zap.String("order_id", orderID),
+		zap.String("current_status", string(order.Status)),
+		zap.Int64("client_id", order.ClientID),
+	)
+
 	if order.ID == "" {
 		return fmt.Errorf("заказ не найден: %s", orderID)
 	}
 
-	// Проверяем, не взят ли заказ уже в работу
+	// Проверяем, не занят ли заказ текущим астрологом
+	if order.Status == models.OrderStatusInWork && order.AstrologerID == astrologerID {
+		s.logger.Info("Заказ уже взят текущим астрологом",
+			zap.String("order_id", orderID),
+			zap.Int64("astrologer_id", astrologerID),
+		)
+		// Получаем ID сообщения в канале астрологов
+		messageID, exists := s.orderMessages[orderID]
+		if exists {
+			// Обновляем сообщение в канале астрологов
+			text := fmt.Sprintf(
+				"🌟 *ЗАКАЗ В РАБОТЕ* 🌟\n\n"+
+					"*ID заказа:* `%s`\n"+
+					"*Клиент:* %s\n"+
+					"*Username:* @%s\n"+
+					"*Дата заказа:* %s\n\n"+
+					"*Взят в работу:* %s\n"+
+					"*Астролог:* %s",
+				orderID,
+				clientNameSafe,
+				clientUserSafe,
+				order.CreatedAt.Format("02.01.2006 15:04"),
+				order.TakenAt.Format("02.01.2006 15:04"),
+				astrologerNameSafe,
+			)
+
+			// Пустая клавиатура для удаления кнопки
+			keyboard := tgbotapi.InlineKeyboardMarkup{
+				InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{},
+			}
+
+			err = s.telegram.UpdateOrderMessage(s.channelID, messageID, text, keyboard)
+			if err != nil {
+				s.logger.Error("Ошибка при обновлении сообщения о заказе",
+					zap.Error(err),
+					zap.String("order_id", orderID),
+				)
+			}
+		}
+
+		return nil
+	}
+
+	// Если заказ уже не в статусе new, возвращаем ошибку
 	if order.Status != models.OrderStatusNew {
+		s.logger.Warn("Попытка взять заказ, который уже не в статусе 'new'",
+			zap.String("order_id", orderID),
+			zap.String("current_status", string(order.Status)),
+		)
 		return fmt.Errorf("заказ уже взят в работу или завершен: %s", orderID)
 	}
 
 	// Обновляем статус заказа в репозитории
 	err = s.orderRepo.UpdateOrderStatus(orderID, models.OrderStatusInWork, astrologerID, astrologerName)
 	if err != nil {
-		s.logger.Error("ошибка при обновлении статуса заказа",
+		s.logger.Error("Ошибка при обновлении статуса заказа",
 			zap.Error(err),
 			zap.String("order_id", orderID),
 		)
 		return err
-	}
-
-	// Получаем ID сообщения в канале астрологов
-	messageID, exists := s.orderMessages[orderID]
-	if !exists {
-		s.logger.Error("не найдено сообщение для заказа",
-			zap.String("order_id", orderID),
-		)
-		return fmt.Errorf("не найдено сообщение для заказа: %s", orderID)
 	}
 
 	// Получаем обновленный заказ
 	updatedOrder, err := s.orderRepo.GetOrderByID(orderID)
 	if err != nil {
-		s.logger.Error("ошибка при получении обновленного заказа",
+		s.logger.Error("Ошибка при получении обновленного заказа",
 			zap.Error(err),
 			zap.String("order_id", orderID),
 		)
 		return err
 	}
 
-	// Обновляем сообщение в канале астрологов
-	text := fmt.Sprintf(
-		"🌟 *ЗАКАЗ ВЗЯТ В РАБОТУ* 🌟\n\n"+
-			"*ID заказа:* `%s`\n"+
-			"*Клиент:* %s\n"+
-			"*Username:* @%s\n"+
-			"*Дата заказа:* %s\n\n"+
-			"*Взят в работу:* %s\n"+
-			"*Астролог:* %s",
-		updatedOrder.ID,
-		updatedOrder.ClientName,
-		updatedOrder.ClientUser,
-		updatedOrder.CreatedAt.Format("02.01.2006 15:04"),
-		updatedOrder.TakenAt.Format("02.01.2006 15:04"),
-		astrologerName,
+	// Логируем информацию об обновленном заказе
+	s.logger.Info("Информация об обновленном заказе",
+		zap.String("order_id", updatedOrder.ID),
+		zap.String("new_status", string(updatedOrder.Status)),
+		zap.Int64("client_id", updatedOrder.ClientID),
 	)
 
-	keyboard := tgbotapi.InlineKeyboardMarkup{
-		InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{},
-	}
-
-	err = s.telegram.UpdateOrderMessage(s.channelID, messageID, text, keyboard)
-	if err != nil {
-		s.logger.Error("ошибка при обновлении сообщения о заказе",
-			zap.Error(err),
-			zap.String("order_id", orderID),
+	// Получаем ID сообщения в канале астрологов
+	messageID, exists := s.orderMessages[orderID]
+	if exists {
+		// Обновляем сообщение в канале астрологов
+		text := fmt.Sprintf(
+			"🌟 *ЗАКАЗ В РАБОТЕ* 🌟\n\n"+
+				"*ID заказа:* `%s`\n"+
+				"*Клиент:* %s\n"+
+				"*Username:* @%s\n"+
+				"*Дата заказа:* %s\n\n"+
+				"*Взят в работу:* %s\n"+
+				"*Астролог:* %s",
+			updatedOrder.ID,
+			clientNameSafe,
+			clientUserSafe,
+			updatedOrder.CreatedAt.Format("02.01.2006 15:04"),
+			updatedOrder.TakenAt.Format("02.01.2006 15:04"),
+			astrologerNameSafe,
 		)
-		return err
+
+		// Пустая клавиатура для удаления кнопки
+		keyboard := tgbotapi.InlineKeyboardMarkup{
+			InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{},
+		}
+
+		err = s.telegram.UpdateOrderMessage(s.channelID, messageID, text, keyboard)
+		if err != nil {
+			s.logger.Error("Ошибка при обновлении сообщения о заказе",
+				zap.Error(err),
+				zap.String("order_id", orderID),
+			)
+		}
 	}
 
 	// Отправляем уведомление клиенту о том, что его запрос взят в работу
@@ -202,13 +262,13 @@ func (s *OrderService) TakeOrder(orderID string, astrologerID int64, astrologerN
 		"✨ Ваш запрос на астрологическую консультацию принят в работу! Астролог скоро свяжется с вами.",
 	))
 	if err != nil {
-		s.logger.Error("ошибка при отправке уведомления клиенту",
+		s.logger.Error("Ошибка при отправке уведомления клиенту",
 			zap.Error(err),
 			zap.Int64("client_id", updatedOrder.ClientID),
 		)
 	}
 
-	s.logger.Info("заказ взят в работу",
+	s.logger.Info("Заказ взят в работу",
 		zap.String("order_id", orderID),
 		zap.Int64("astrologer_id", astrologerID),
 	)

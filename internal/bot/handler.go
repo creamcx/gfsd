@@ -43,6 +43,14 @@ const (
 )
 
 func (s *Service) HandleUpdate(update models.User) error {
+	// Логируем входящие данные
+	s.logger.Info("Получено обновление",
+		zap.Int64("chat_id", update.ChatID),
+		zap.String("text", update.Text),
+		zap.String("username", update.Username),
+		zap.String("full_name", update.FullName),
+	)
+
 	// Обработка команды /start
 	if strings.HasPrefix(update.Text, "/start") {
 		parts := strings.Split(update.Text, " ")
@@ -51,12 +59,33 @@ func (s *Service) HandleUpdate(update models.User) error {
 		if len(parts) > 1 && strings.HasPrefix(parts[1], "ref_") {
 			// Извлекаем реферальный код
 			referralCode := strings.TrimPrefix(parts[1], "ref_")
-			return s.handleReferralConsultationRequest(update.ChatID, update.FullName, update.Username, referralCode)
+
+			// Корректируем пустые значения
+			username := update.Username
+			if username == "" {
+				username = "unnamed_user"
+			}
+			fullName := update.FullName
+			if fullName == "" {
+				fullName = "Unnamed User"
+			}
+
+			return s.handleReferralConsultationRequest(update.ChatID, fullName, username, referralCode)
 		}
 
 		// Обработка обычного запроса на консультацию
 		if len(parts) > 1 && parts[1] == "astro" {
-			return s.handleConsultationRequest(update.ChatID, update.FullName, update.Username, "")
+			// Корректируем пустые значения
+			username := update.Username
+			if username == "" {
+				username = "unnamed_user"
+			}
+			fullName := update.FullName
+			if fullName == "" {
+				fullName = "Unnamed User"
+			}
+
+			return s.handleConsultationRequest(update.ChatID, fullName, username, "")
 		}
 
 		return s.sendWelcomeMessage(update.ChatID)
@@ -64,17 +93,47 @@ func (s *Service) HandleUpdate(update models.User) error {
 
 	// Обработка нажатия на кнопку "Отправить другу"
 	if update.Text == shareButtonText {
-		return s.handleShareButton(update.ChatID, "", "")
+		// Корректируем пустые значения
+		username := update.Username
+		if username == "" {
+			username = "unnamed_user"
+		}
+		fullName := update.FullName
+		if fullName == "" {
+			fullName = "Unnamed User"
+		}
+
+		return s.handleShareButton(update.ChatID, username, fullName)
 	}
 
 	// Обработка команды для получения консультации
 	if update.Text == astroCommand {
-		return s.handleConsultationRequest(update.ChatID, update.FullName, update.Username, "")
+		// Корректируем пустые значения
+		username := update.Username
+		if username == "" {
+			username = "unnamed_user"
+		}
+		fullName := update.FullName
+		if fullName == "" {
+			fullName = "Unnamed User"
+		}
+
+		return s.handleConsultationRequest(update.ChatID, fullName, username, "")
 	}
 
-	// Обработка клика на текст "Написать астрологу" (если кто-то вручную напишет)
+	// Обработка клика на текст "Написать астрологу"
 	if strings.Contains(update.Text, "Написать астрологу") {
-		return s.handleConsultationRequest(update.ChatID, update.FullName, update.Username, "")
+		// Корректируем пустые значения
+		username := update.Username
+		if username == "" {
+			username = "unnamed_user"
+		}
+		fullName := update.FullName
+		if fullName == "" {
+			fullName = "Unnamed User"
+		}
+
+		return s.handleConsultationRequest(update.ChatID, fullName, username, "")
 	}
 
 	// В остальных случаях отправляем стандартный ответ
@@ -114,6 +173,13 @@ func (s *Service) sendWelcomeMessage(chatID int64) error {
 }
 
 func (s *Service) handleShareButton(chatID int64, username string, fullName string) error {
+	// Логируем входящие данные
+	s.logger.Info("Обработка share button",
+		zap.Int64("chat_id", chatID),
+		zap.String("username", username),
+		zap.String("full_name", fullName),
+	)
+
 	// Получаем пользователя из базы данных
 	user, err := s.userRepo.GetUserByID(chatID)
 	if err != nil {
@@ -148,7 +214,7 @@ func (s *Service) handleShareButton(chatID int64, username string, fullName stri
 			)
 			return err
 		}
-	} else if user.ReferralCode == "" {
+	} else if !user.ReferralCode.Valid {
 		// Если пользователь существует, но у него нет реферального кода
 		referralCode, err = s.userRepo.GenerateReferralCode(chatID)
 		if err != nil {
@@ -159,11 +225,22 @@ func (s *Service) handleShareButton(chatID int64, username string, fullName stri
 			return err
 		}
 	} else {
-		referralCode = user.ReferralCode
+		referralCode = user.ReferralCode.String
 	}
 
+	// Логируем сгенерированный реферальный код
+	s.logger.Info("Реферальный код сгенерирован",
+		zap.Int64("chat_id", chatID),
+		zap.String("referral_code", referralCode),
+	)
+
 	// Формируем текст сообщения с персональным реферальным кодом
-	personalShareMessage := fmt.Sprintf(shareMessageText, referralCode)
+	personalShareMessage := fmt.Sprintf(
+		"Привет! Я только что получила астрологический разбор, и он реально классный! 🙌\n\n"+
+			"У меня есть для тебя уникальный подарок – мини-консультация у астролога!\n\n"+
+			"🚀 Нажми сюда: [💌 Написать астрологу](https://t.me/InviteAstroBot?start=ref_%s)",
+		referralCode,
+	)
 
 	// Отправляем Markdown сообщение с информацией о подарке
 	if err := s.telegram.SendMarkdownMessage(chatID, personalShareMessage); err != nil {

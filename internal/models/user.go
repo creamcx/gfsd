@@ -14,12 +14,12 @@ const (
 )
 
 type User struct {
-	ChatID       int64    `db:"chat_id"`
-	Username     string   `db:"username"`
-	FullName     string   `db:"full_name"`
-	ReferralCode string   `db:"referral_code"`
-	Text         string   `db:"-"` // Поле не из базы данных, пропускаем его при сопоставлении
-	Contact      *Contact `db:"-"` // Поле не из базы данных, пропускаем его при сопоставлении
+	ChatID       int64          `db:"chat_id"`
+	Username     string         `db:"username"`
+	FullName     string         `db:"full_name"`
+	ReferralCode sql.NullString `db:"referral_code"`
+	Text         string         `db:"-"`
+	Contact      *Contact       `db:"-"`
 }
 
 type Contact struct {
@@ -29,17 +29,17 @@ type Contact struct {
 }
 
 type Order struct {
-	ID             string        `db:"id" json:"id"`
-	ClientID       int64         `db:"client_id" json:"client_id"`
-	ClientName     string        `db:"-" json:"client_name"` // Поле не из основной таблицы
-	ClientUser     string        `db:"-" json:"client_user"` // Поле не из основной таблицы
-	Status         OrderStatus   `db:"status" json:"status"`
-	CreatedAt      time.Time     `db:"created_at" json:"created_at"`
-	AstrologerID   sql.NullInt64 `db:"astrologer_id"`
-	AstrologerName string        `db:"astrologer_name" json:"astrologer_name,omitempty"`
-	TakenAt        *time.Time    `db:"taken_at" json:"taken_at,omitempty"`
-	ReferrerID     int64         `db:"referrer_id" json:"referrer_id,omitempty"`
-	ReferrerName   string        `db:"referrer_name" json:"referrer_name,omitempty"`
+	ID             string      `db:"id" json:"id"`
+	ClientID       int64       `db:"client_id" json:"client_id"`
+	ClientName     string      `db:"client_name" json:"-"` // Добавьте тег db
+	ClientUser     string      `db:"client_user" json:"-"` // Добавьте тег db
+	Status         OrderStatus `db:"status" json:"status"`
+	CreatedAt      time.Time   `db:"created_at" json:"created_at"`
+	AstrologerID   int64       `db:"astrologer_id"`
+	AstrologerName string      `db:"astrologer_name" json:"astrologer_name,omitempty"`
+	TakenAt        *time.Time  `db:"taken_at" json:"taken_at,omitempty"`
+	ReferrerID     int64       `db:"referrer_id" json:"referrer_id,omitempty"`
+	ReferrerName   string      `db:"referrer_name" json:"referrer_name,omitempty"`
 }
 
 type CallbackQuery struct {
