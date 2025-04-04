@@ -4,7 +4,6 @@ import (
 	"astro-sarafan/internal/database"
 	"astro-sarafan/internal/models"
 	"errors"
-	"net/url"
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -105,28 +104,18 @@ func (s *Service) sendWelcomeMessage(chatID int64) error {
 }
 
 func (s *Service) handleShareButton(chatID int64) error {
-	inlineKeyboard := map[string]interface{}{
-		"inline_keyboard": [][]map[string]string{
-			{
-				{
-					"text": "🎁 Поделиться с другом",
-					"url":  "https://t.me/share/url?url=" + url.QueryEscape(botLink) + "&text=" + url.QueryEscape("Привет! Я только что получила астрологический разбор, и он реально классный! 🙌 У меня есть для тебя уникальный подарок – мини-консультация у астролога!"),
-				},
-			},
-		},
+	if err := s.telegram.SendMarkdownMessage(chatID, shareMessageText); err != nil {
+		s.logger.Error("ошибка при отправке сообщения с Markdown",
+			zap.Error(err),
+			zap.Int64("chat_id", chatID),
+		)
+		return err
 	}
 
-	text := "Нажмите на кнопку ниже, чтобы отправить подарок другу 👇"
-
-	data := map[string]interface{}{
-		"chat_id":      chatID,
-		"text":         text,
-		"parse_mode":   "Markdown",
-		"reply_markup": inlineKeyboard,
-	}
-
-	if err := s.telegram.SendCustomMessage(data); err != nil {
-		s.logger.Error("ошибка при отправке сообщения с кнопкой поделиться",
+	// Отправляем инструкцию для пересылки
+	instruction := "👆 Перешлите это сообщение другу, чтобы он получил подарок!"
+	if err := s.telegram.SendMessage(chatID, instruction); err != nil {
+		s.logger.Error("ошибка при отправке инструкции",
 			zap.Error(err),
 			zap.Int64("chat_id", chatID),
 		)
@@ -135,28 +124,6 @@ func (s *Service) handleShareButton(chatID int64) error {
 
 	return nil
 }
-
-//func (s *Service) handleShareButton(chatID int64) error {
-//	if err := s.telegram.SendMarkdownMessage(chatID, shareMessageText); err != nil {
-//		s.logger.Error("ошибка при отправке сообщения с Markdown",
-//			zap.Error(err),
-//			zap.Int64("chat_id", chatID),
-//		)
-//		return err
-//	}
-//
-//	// Отправляем инструкцию для пересылки
-//	instruction := "👆 Перешлите это сообщение другу, чтобы он получил подарок!"
-//	if err := s.telegram.SendMessage(chatID, instruction); err != nil {
-//		s.logger.Error("ошибка при отправке инструкции",
-//			zap.Error(err),
-//			zap.Int64("chat_id", chatID),
-//		)
-//		return err
-//	}
-//
-//	return nil
-//}
 
 // handleConsultationRequest - обработка запроса на консультацию
 func (s *Service) handleConsultationRequest(chatID int64, clientName, clientUser string) error {
