@@ -111,8 +111,6 @@ func (t *TelegramClient) SendCustomMessage(params map[string]interface{}) error 
 
 	// Проверяем статус ответа
 	if resp.StatusCode != http.StatusOK {
-		// Здесь можно добавить более детальную обработку ошибок,
-		// декодировав тело ответа Telegram API
 		return fmt.Errorf("telegram API returned non-OK status: %d", resp.StatusCode)
 	}
 
