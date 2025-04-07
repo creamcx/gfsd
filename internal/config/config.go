@@ -26,10 +26,29 @@ type Database struct {
 	SSLMode  string `yaml:"sslmode"`
 }
 
+type API struct {
+	ButtonServerAddr string `yaml:"button_server_addr"`
+	PublicURL        string `yaml:"public_url"`
+	PDFStoragePath   string `yaml:"pdf_storage_path"`
+}
+
+type GRPC struct {
+	ServerAddr string `yaml:"server_addr"`
+	Timeout    int    `yaml:"timeout"`
+}
+
+type Reminder struct {
+	CheckPeriod  int `yaml:"check_period"`
+	ReminderTime int `yaml:"reminder_time"`
+}
+
 type AppConfig struct {
 	Logger   Logger   `yaml:"log"`
 	Telegram Telegram `yaml:"telegram"`
 	Database Database `yaml:"database"`
+	API      API      `yaml:"api"`
+	GRPC     GRPC     `yaml:"grpc"`
+	Reminder Reminder `yaml:"reminder"`
 }
 
 func NewConfig(path string) (*AppConfig, error) {
