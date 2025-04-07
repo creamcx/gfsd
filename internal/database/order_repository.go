@@ -368,3 +368,24 @@ func (r *OrderRepository) GetOrdersInWorkWithoutPDF() ([]models.Order, error) {
 
 	return orders, nil
 }
+
+// Добавьте метод в OrderRepository для прикрепления PDF к заказу
+func (r *OrderRepository) AttachPDFToOrder(orderID string, pdfURL string) error {
+	now := time.Now()
+	query := `UPDATE orders SET pdf_url = $1, pdf_sent_at = $2 WHERE id = $3`
+
+	_, err := r.db.Exec(query, pdfURL, now, orderID)
+	if err != nil {
+		r.logger.Error("Ошибка при прикреплении PDF к заказу",
+			zap.Error(err),
+			zap.String("order_id", orderID),
+			zap.String("pdf_url", pdfURL))
+		return err
+	}
+
+	r.logger.Info("PDF успешно прикреплен к заказу",
+		zap.String("order_id", orderID),
+		zap.String("pdf_url", pdfURL))
+
+	return nil
+}

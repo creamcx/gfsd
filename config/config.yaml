@@ -25,12 +25,6 @@ api:
   # Путь для хранения PDF файлов
   pdf_storage_path: "./data/pdf"
 
-# Настройки gRPC клиента для генерации PDF
-grpc:
-  # Адрес gRPC сервера
-  server_addr: "localhost:50051"
-  # Таймаут для gRPC запросов (в секундах)
-  timeout: 30
 
 # Настройки сервиса напоминаний
 reminder:

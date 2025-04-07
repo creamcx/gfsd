@@ -5,11 +5,10 @@ import (
 	"astro-sarafan/internal/bot"
 	"astro-sarafan/internal/config"
 	"astro-sarafan/internal/database"
-	"astro-sarafan/internal/grpc"
 	"astro-sarafan/internal/logger"
 	"astro-sarafan/internal/telegram"
 	"os"
-	"time"
+	_ "time"
 
 	"go.uber.org/zap"
 )
@@ -50,24 +49,6 @@ func Run() error {
 		logger.Error("ошибка создания директории для PDF", zap.Error(err))
 		return err
 	}
-
-	// Инициализируем gRPC клиент для генерации PDF
-	pdfClient, err := grpc.NewPDFClient(
-		logger,
-		orderRepo,
-		cfg.GRPC.ServerAddr,
-		cfg.API.PublicURL,
-		cfg.API.PDFStoragePath,
-		tgClient,
-	)
-	if err != nil {
-		logger.Error("ошибка создания gRPC клиента", zap.Error(err))
-		return err
-	}
-	defer pdfClient.Close()
-
-	// Запускаем периодическую проверку и генерацию PDF
-	pdfClient.StartCheckingLoop(15 * time.Minute)
 
 	// Инициализируем HTTP-сервер для обработки нажатий на кнопку
 	buttonServer := api.NewButtonServer(
