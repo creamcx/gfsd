@@ -7,6 +7,7 @@ import (
 	"astro-sarafan/internal/logger"
 	"astro-sarafan/internal/telegram"
 	"go.uber.org/zap"
+	"time"
 )
 
 func Run() error {
@@ -42,6 +43,13 @@ func Run() error {
 
 	// Инициализируем основной сервис бота
 	botService := bot.NewService(tgClient, logger, orderService, userRepo)
+
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		for range ticker.C {
+			orderService.CheckConsultationTimeouts()
+		}
+	}()
 
 	// Запускаем бота
 	if err := botService.Start(); err != nil {

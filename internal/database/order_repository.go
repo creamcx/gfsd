@@ -174,14 +174,16 @@ func (r *OrderRepository) UpdateOrderStatus(orderID string, status models.OrderS
         SET 
             status = $1, 
             taken_at = $2, 
-            astrologer_id = $3, 
-            astrologer_name = $4
-        WHERE id = $5 AND status = $6
+            consultation_started_at = $3,
+            astrologer_id = $4, 
+            astrologer_name = $5
+        WHERE id = $6 AND status = $7
     `
 
 	result, err := tx.Exec(
 		query,
 		status,
+		now,
 		now,
 		astrologerID,
 		astrologerName,
@@ -248,4 +250,26 @@ func (r *OrderRepository) GetAllOrders() ([]models.Order, error) {
 	}
 
 	return orders, nil
+}
+
+func (r *OrderRepository) GetActiveOrdersOver24Hours() ([]models.Order, error) {
+	query := `
+        SELECT * FROM orders 
+        WHERE consultation_started_at < NOW() - INTERVAL '1 minutes'
+        AND status = 'in_work'
+        AND (reminder_sent IS NULL OR reminder_sent = false)
+    `
+	var orders []models.Order
+	err := r.db.Select(&orders, query)
+	return orders, err
+}
+
+func (r *OrderRepository) MarkReminderSent(orderID string) error {
+	query := `
+        UPDATE orders 
+        SET reminder_sent = true 
+        WHERE id = $1
+    `
+	_, err := r.db.Exec(query, orderID)
+	return err
 }
