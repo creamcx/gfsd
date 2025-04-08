@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"regexp"
 	"strings"
 )
 
@@ -42,15 +41,4 @@ func EscapeMarkdownV2(text string) string {
 	}
 
 	return result.String()
-}
-
-func SanitizeMarkdownText(text string) string {
-	// Удаляем лишние экранирования
-	text = strings.ReplaceAll(text, "\\)", ")")
-	text = strings.ReplaceAll(text, "\\(", "(")
-
-	// Заменяем двойные экранирования
-	text = regexp.MustCompile(`\\{2,}`).ReplaceAllString(text, "\\")
-
-	return text
 }

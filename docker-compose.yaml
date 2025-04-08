@@ -7,13 +7,15 @@ services:
     depends_on:
       - postgres
     environment:
-      - DB_HOST=localhost
+      - DB_HOST=postgres
       - DB_PORT=5432
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=postgres
     volumes:
-      - ./config/config.yaml:/app/config.yaml
+      - ./config:/app/config
+      - ./migrations:/app/migrations
+    command: ["./astro-sarafan"]
 
   postgres:
     image: postgres:15
@@ -24,7 +26,6 @@ services:
       - POSTGRES_DB=postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "15432:5432"
 
