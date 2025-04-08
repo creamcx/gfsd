@@ -17,7 +17,7 @@ db-up:
 	docker-compose up -d postgres
 
 db-migrate:
-	docker-compose run --rm app ./astro-sarafan -migrate -config=/app/config/config.yaml
+	docker-compose run --rm app bash -c "cd /app && go run cmd/migrate/main.go"
 
 logs:
 	docker-compose logs -f

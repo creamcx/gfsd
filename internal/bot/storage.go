@@ -9,18 +9,23 @@ import (
 
 // TelegramClient - интерфейс для взаимодействия с Telegram API
 type TelegramClient interface {
-	// Базовые методы отправки сообщений
 	SendMessage(chatID int64, text string) error
 	SendMarkdownMessage(chatID int64, text string) error
+	SendMarkdownMessageAndGetID(chatID int64, text string) (string, error)
 	SendMessageWithKeyboard(chatID int64, text string, keyboard tgbotapi.ReplyKeyboardMarkup) error
 	SendMessageWithInlineKeyboard(chatID int64, text string, keyboard tgbotapi.InlineKeyboardMarkup) error
-
-	// Методы для работы с заказами
+	SendMessageToChannel(channelID string, text string) error
 	SendOrderToAstrologers(channelID string, order models.Order) (string, error)
+	UpdateMessageReplyMarkup(chatID int64, messageID string, keyboard tgbotapi.InlineKeyboardMarkup) error
 	UpdateOrderMessage(channelID string, messageID string, text string, keyboard tgbotapi.InlineKeyboardMarkup) error
+	SendCustomMessage(params map[string]interface{}) error
 
-	// Метод для получения обновлений
+	// Метод объединенного обработчика обновлений
 	StartBot() (chan models.User, chan models.CallbackQuery, error)
+
+	// Устаревшие методы, оставлены для обратной совместимости
+	ListenUpdates() (<-chan models.User, error)
+	ListenCallbackQueries() (<-chan models.CallbackQuery, error)
 }
 
 // Service - основной сервис бота
@@ -33,6 +38,7 @@ type Service struct {
 
 // OrderService - структура сервиса заказов
 type OrderService struct {
+	orders        map[string]models.Order
 	orderMessages map[string]string
 	telegram      TelegramClient
 	logger        *zap.Logger

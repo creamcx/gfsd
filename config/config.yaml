@@ -7,10 +7,9 @@ log:
   sink: "stdout"
 
 database:
-  host: "localhost"
-  port: 15432
+  host: "postgres" 
+  port: 5432
   user: "postgres"
   password: "postgres"
   dbname: "postgres"
   sslmode: "disable"
-  migrations_path: "/app/migrations"
