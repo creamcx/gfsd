@@ -307,16 +307,3 @@ func (t *TelegramClient) StartBot() (chan models.User, chan models.CallbackQuery
 
 	return userMessages, callbackQueries, nil
 }
-
-// Эти методы теперь устарели, но мы оставляем их для обратной совместимости
-// Они должны быть удалены в дальнейшем
-
-func (t *TelegramClient) ListenUpdates() (<-chan models.User, error) {
-	log.Println("ВНИМАНИЕ: Метод ListenUpdates устарел. Используйте StartBot вместо него")
-	return nil, fmt.Errorf("метод устарел, используйте StartBot")
-}
-
-func (t *TelegramClient) ListenCallbackQueries() (<-chan models.CallbackQuery, error) {
-	log.Println("ВНИМАНИЕ: Метод ListenCallbackQueries устарел. Используйте StartBot вместо него")
-	return nil, fmt.Errorf("метод устарел, используйте StartBot")
-}
