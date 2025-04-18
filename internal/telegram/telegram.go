@@ -150,7 +150,7 @@ func (t *TelegramClient) SendOrderToAstrologers(channelID string, order models.O
 	textBuilder := strings.Builder{}
 	textBuilder.WriteString("🌟 *НОВЫЙ ЗАКАЗ НА КОНСУЛЬТАЦИЮ* 🌟\n\n")
 	textBuilder.WriteString(fmt.Sprintf("*ID заказа:* `%s`\n", order.ID))
-	textBuilder.WriteString(fmt.Sprintf("*Клиент:* %s\n", utils.EscapeMarkdownV2(clientName)))
+	textBuilder.WriteString(fmt.Sprintf("*Клиент:* %s\n", clientName))
 	textBuilder.WriteString(fmt.Sprintf("*Username:* @%s\n", utils.EscapeMarkdownV2(clientUser)))
 	textBuilder.WriteString(fmt.Sprintf("*Дата заказа:* %s\n", order.CreatedAt.Format("02.01.2006 15:04")))
 

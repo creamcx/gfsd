@@ -130,7 +130,7 @@ func (s *OrderService) TakeOrder(orderID string, astrologerID int64, astrologerN
 		clientUser = "unnamed_user"
 	}
 	astrologerNameSafe := utils.EscapeMarkdownV2(astrologerName)
-	clientNameSafe := utils.EscapeMarkdownV2(clientName)
+	clientNameSafe := clientName
 	clientUserSafe := utils.EscapeMarkdownV2(clientUser)
 
 	// Логируем информацию о заказе перед обновлением
