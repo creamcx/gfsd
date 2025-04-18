@@ -6,9 +6,35 @@ import (
 	"astro-sarafan/internal/database"
 	"astro-sarafan/internal/logger"
 	"astro-sarafan/internal/telegram"
+	"database/sql"
+	"errors"
+	"fmt"
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"go.uber.org/zap"
 	"time"
 )
+
+func runMigrations(db *sql.DB) error {
+	driver, err := postgres.WithInstance(db, &postgres.Config{})
+	if err != nil {
+		return fmt.Errorf("не удалось создать драйвер миграций: %w", err)
+	}
+
+	m, err := migrate.NewWithDatabaseInstance(
+		"file://migrations",
+		"postgres", driver)
+	if err != nil {
+		return fmt.Errorf("не удалось создать экземпляр миграций: %w", err)
+	}
+
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("ошибка выполнения миграций: %w", err)
+	}
+
+	return nil
+}
 
 func Run() error {
 	// Загружаем конфигурацию
@@ -30,6 +56,11 @@ func Run() error {
 		logger.Error("не удалось подключиться к базе данных", zap.Error(err))
 		return err
 	}
+	go func() {
+		if err := runMigrations(db.DB); err != nil {
+			logger.Error("не удалось выполнить миграции", zap.Error(err))
+		}
+	}()
 
 	// Инициализируем репозитории
 	userRepo := database.NewUserRepository(db, logger)

@@ -1,3 +1,4 @@
+-- Создание таблицы пользователей
 CREATE TABLE IF NOT EXISTS users (
                                      id SERIAL PRIMARY KEY,
                                      chat_id BIGINT UNIQUE NOT NULL,
@@ -7,18 +8,19 @@ CREATE TABLE IF NOT EXISTS users (
     referral_code VARCHAR(20) UNIQUE
     );
 
--- Создание таблицы для хранения заказов
+-- Создание таблицы заказов
 CREATE TABLE IF NOT EXISTS orders (
                                       id VARCHAR(20) PRIMARY KEY,
     client_id BIGINT NOT NULL REFERENCES users(chat_id),
     status VARCHAR(20) NOT NULL DEFAULT 'new',
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     taken_at TIMESTAMP,
-    consultation_started_at TIMESTAMP,  -- Новое поле
+    consultation_started_at TIMESTAMP,
     astrologer_id BIGINT,
     astrologer_name VARCHAR(255),
     referrer_id BIGINT,
     referrer_name VARCHAR(255),
+    reminder_sent BOOLEAN DEFAULT false,
     CONSTRAINT unique_client_consultation UNIQUE (client_id)
     );
 

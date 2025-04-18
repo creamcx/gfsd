@@ -8,4 +8,5 @@ FROM alpine:latest
 WORKDIR /app
 COPY --from=builder /app/astro-sarafan .
 COPY config/config.yaml .
+COPY migrations ./migrations
 CMD ["./astro-sarafan"]

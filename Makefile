@@ -16,8 +16,5 @@ stop:
 db-up:
 	docker-compose up -d postgres
 
-db-migrate:
-	docker-compose run --rm app bash -c "cd /app && go run cmd/migrate/main.go"
-
 logs:
 	docker-compose logs -f
