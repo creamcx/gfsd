@@ -3,7 +3,7 @@ version: '3'
 services:
   app:
     build: .
-    container_name: astro-sarafan
+    container_name: astro-sarafan1
     depends_on:
       - postgres
     environment:
@@ -17,7 +17,7 @@ services:
 
   postgres:
     image: postgres:15
-    container_name: astro-sarafan-database
+    container_name: astro-sarafan-database1
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres

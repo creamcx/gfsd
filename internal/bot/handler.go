@@ -55,6 +55,18 @@ func (s *Service) HandleUpdate(update models.User) error {
 	if strings.HasPrefix(update.Text, "/start") {
 		parts := strings.Split(update.Text, " ")
 
+		if len(parts) > 1 && parts[1] == "full_consultation" {
+			username := update.Username
+			if username == "" {
+				username = "unnamed_user"
+			}
+			fullName := update.FullName
+			if fullName == "" {
+				fullName = "Unnamed User"
+			}
+
+			return s.handleFullConsultationRequest(update.ChatID, fullName, username)
+		}
 		// Обрабатываем реферальный код
 		if len(parts) > 1 && strings.HasPrefix(parts[1], "ref_") {
 			// Извлекаем реферальный код
@@ -346,6 +358,59 @@ func (s *Service) handleConsultationRequest(clientID int64, clientName, clientUs
 		zap.Int64("client_id", clientID),
 		zap.String("order_id", orderID),
 		zap.Int64("referrer_id", referrerID),
+	)
+
+	return nil
+}
+
+// Добавить в internal/bot/handler.go
+// Добавьте в internal/bot/handler.go
+func (s *Service) handleFullConsultationRequest(clientID int64, clientName, clientUser string) error {
+	// Логируем запрос
+	s.logger.Info("Обработка запроса на полную консультацию",
+		zap.Int64("client_id", clientID),
+		zap.String("client_name", clientName),
+		zap.String("client_user", clientUser),
+	)
+
+	// Проверяем и устанавливаем значения по умолчанию
+	if clientName == "" {
+		clientName = "Unnamed User"
+	}
+	if clientUser == "" {
+		clientUser = "unnamed_user"
+	}
+
+	// Создаем заказ на полную консультацию через orderService
+	orderID, err := s.orderService.CreateFullConsultationOrder(clientID, clientName, clientUser)
+	if err != nil {
+		if errors.Is(err, database.ErrConsultationExists) {
+			return s.telegram.SendMessage(clientID, "⚠️ У вас уже есть активная консультация. Наш астролог свяжется с вами в ближайшее время.")
+		}
+
+		s.logger.Error("ошибка при создании заказа на полную консультацию",
+			zap.Error(err),
+			zap.Int64("client_id", clientID),
+		)
+		return err
+	}
+
+	// Отправляем подтверждение пользователю
+	message := "✨ Благодарим за ваш запрос на полную астрологическую консультацию! " +
+		"Наш астролог получит уведомление и свяжется с вами в ближайшее время."
+
+	err = s.telegram.SendMessage(clientID, message)
+	if err != nil {
+		s.logger.Error("ошибка при отправке подтверждения",
+			zap.Error(err),
+			zap.Int64("client_id", clientID),
+		)
+		return err
+	}
+
+	s.logger.Info("создан запрос на полную консультацию",
+		zap.Int64("client_id", clientID),
+		zap.String("order_id", orderID),
 	)
 
 	return nil

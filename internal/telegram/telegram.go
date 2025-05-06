@@ -84,6 +84,58 @@ func (t *TelegramClient) UpdateMessageReplyMarkup(chatID int64, messageID string
 	return err
 }
 
+// Добавьте в internal/telegram/telegram.go
+func (t *TelegramClient) SendFullConsultationToAstrologers(channelID string, order models.Order) (string, error) {
+	// Корректируем имя пользователя и клиента
+	clientUser := order.ClientUser
+	if clientUser == "" {
+		clientUser = "unnamed_user"
+	}
+	clientName := order.ClientName
+	if clientName == "" {
+		clientName = "Unnamed User"
+	}
+
+	// Составляем текст сообщения для астрологов
+	textBuilder := strings.Builder{}
+	textBuilder.WriteString("💰 *ЗАКАЗ НА ПОЛНУЮ ПЛАТНУЮ КОНСУЛЬТАЦИЮ* 💰\n\n")
+	textBuilder.WriteString(fmt.Sprintf("*ID заказа:* `%s`\n", order.ID))
+	textBuilder.WriteString(fmt.Sprintf("*Клиент:* %s\n", clientName))
+	textBuilder.WriteString(fmt.Sprintf("*Username:* @%s\n", utils.EscapeMarkdownV2(clientUser)))
+	textBuilder.WriteString(fmt.Sprintf("*Дата заказа:* %s\n", order.CreatedAt.Format("02.01.2006 15:04")))
+	textBuilder.WriteString("\n*Клиент запросил ПОЛНУЮ консультацию после мини-консультации!*\n")
+	textBuilder.WriteString("\n*Нажмите кнопку ниже, чтобы взять заказ в работу.*")
+
+	// Создаем клавиатуру с кнопкой "Взять в работу"
+	takeOrderButton := tgbotapi.NewInlineKeyboardButtonData("💰 Взять в работу", "take_order:"+order.ID)
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(takeOrderButton),
+	)
+
+	// Если channelID не содержит "-100" в начале, добавим
+	if !strings.HasPrefix(channelID, "-100") {
+		channelID = "-100" + channelID
+	}
+
+	chatID, err := strconv.ParseInt(channelID, 10, 64)
+	if err != nil {
+		return "", fmt.Errorf("invalid channel ID: %v", err)
+	}
+
+	// Отправляем сообщение
+	msg := tgbotapi.NewMessage(chatID, textBuilder.String())
+	msg.ParseMode = "Markdown"
+	msg.ReplyMarkup = keyboard
+
+	// Отправляем и получаем ID сообщения
+	sentMsg, err := t.bot.Send(msg)
+	if err != nil {
+		return "", fmt.Errorf("error sending full consultation message to astrologers: %v", err)
+	}
+
+	return strconv.Itoa(sentMsg.MessageID), nil
+}
+
 func (t *TelegramClient) SendCustomMessage(params map[string]interface{}) error {
 	// Формируем URL для Telegram API
 	url := "https://api.telegram.org/bot" + t.bot.Token + "/sendMessage"

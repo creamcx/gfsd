@@ -19,6 +19,7 @@ type TelegramClient interface {
 	UpdateMessageReplyMarkup(chatID int64, messageID string, keyboard tgbotapi.InlineKeyboardMarkup) error
 	UpdateOrderMessage(channelID string, messageID string, text string, keyboard tgbotapi.InlineKeyboardMarkup) error
 	SendCustomMessage(params map[string]interface{}) error
+	SendFullConsultationToAstrologers(channelID string, order models.Order) (string, error)
 	StartBot() (chan models.User, chan models.CallbackQuery, error)
 }
 

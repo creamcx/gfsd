@@ -84,6 +84,95 @@ func (r *OrderRepository) CreateOrder(order models.Order) error {
 	return nil
 }
 
+// Добавьте в internal/database/order_repository.go
+func (r *OrderRepository) GetOrdersByClientID(clientID int64) ([]models.Order, error) {
+	query := `
+        SELECT 
+            o.id, 
+            o.client_id, 
+            o.status, 
+            o.created_at, 
+            o.taken_at, 
+            COALESCE(o.astrologer_id, 0) as astrologer_id,
+            COALESCE(o.astrologer_name, '') as astrologer_name,
+            COALESCE(u.username, '') as client_user, 
+            COALESCE(u.full_name, '') as client_name
+        FROM orders o
+        LEFT JOIN users u ON o.client_id = u.chat_id
+        WHERE o.client_id = $1
+        ORDER BY o.created_at DESC
+    `
+
+	var orders []models.Order
+	err := r.db.Select(&orders, query, clientID)
+	if err != nil {
+		r.logger.Error("Ошибка при получении заказов по ID клиента",
+			zap.Error(err),
+			zap.Int64("client_id", clientID),
+		)
+		return nil, err
+	}
+
+	return orders, nil
+}
+
+// Добавьте в internal/database/order_repository.go
+func (r *OrderRepository) UpdateConsultationToFull(clientID int64) error {
+	query := `
+        UPDATE orders 
+        SET status = 'full' 
+        WHERE client_id = $1 AND status IN ('new', 'in_work')
+    `
+
+	_, err := r.db.Exec(query, clientID)
+	if err != nil {
+		r.logger.Error("Ошибка при обновлении консультации до полной",
+			zap.Error(err),
+			zap.Int64("client_id", clientID),
+		)
+		return err
+	}
+
+	return nil
+}
+
+// Также добавьте метод для получения заказа по ID клиента
+func (r *OrderRepository) GetOrderByClientID(clientID int64) (models.Order, error) {
+	query := `
+        SELECT 
+            o.id, 
+            o.client_id, 
+            o.status, 
+            o.created_at, 
+            o.taken_at, 
+            COALESCE(o.astrologer_id, 0) as astrologer_id,
+            COALESCE(o.astrologer_name, '') as astrologer_name,
+            COALESCE(u.username, '') as client_user, 
+            COALESCE(u.full_name, '') as client_name,
+            COALESCE(o.consultation_status, '') as consultation_status
+        FROM orders o
+        LEFT JOIN users u ON o.client_id = u.chat_id
+        WHERE o.client_id = $1
+        ORDER BY o.created_at DESC
+        LIMIT 1
+    `
+
+	var order models.Order
+	err := r.db.Get(&order, query, clientID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return models.Order{}, nil
+		}
+		r.logger.Error("Ошибка при получении заказа по ID клиента",
+			zap.Error(err),
+			zap.Int64("client_id", clientID),
+		)
+		return models.Order{}, err
+	}
+
+	return order, nil
+}
+
 func (r *OrderRepository) GetOrderByID(orderID string) (models.Order, error) {
 	var order models.Order
 	query := `
@@ -255,7 +344,7 @@ func (r *OrderRepository) GetAllOrders() ([]models.Order, error) {
 func (r *OrderRepository) GetActiveOrdersOver24Hours() ([]models.Order, error) {
 	query := `
         SELECT * FROM orders 
-        WHERE consultation_started_at < NOW() - INTERVAL '24 hours'
+        WHERE consultation_started_at < NOW() - INTERVAL '1 minutes'
         AND status = 'in_work'
         AND (reminder_sent IS NULL OR reminder_sent = false)
     `

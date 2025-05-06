@@ -109,6 +109,104 @@ func (s *OrderService) CreateOrder(clientID int64, clientName, clientUser string
 	return orderID, nil
 }
 
+// Добавьте в internal/bot/order_service.go
+func (s *OrderService) ProcessFullConsultationRequest(clientID int64, clientName, clientUser string) (string, error) {
+	// Логируем запрос
+	s.logger.Info("Обработка запроса на полную консультацию",
+		zap.Int64("client_id", clientID),
+		zap.String("client_name", clientName),
+		zap.String("client_user", clientUser),
+	)
+
+	// Проверяем и устанавливаем значения по умолчанию
+	if clientName == "" {
+		clientName = "Unnamed User"
+	}
+	if clientUser == "" {
+		clientUser = "unnamed_user"
+	}
+
+	// Проверяем, есть ли у пользователя активный заказ
+	existingOrders, err := s.orderRepo.GetOrdersByClientID(clientID)
+	if err != nil {
+		s.logger.Error("ошибка при проверке существующих заказов",
+			zap.Error(err),
+			zap.Int64("client_id", clientID),
+		)
+		return "", err
+	}
+
+	var orderID string
+
+	if len(existingOrders) > 0 {
+		// Если есть активный заказ, используем его ID
+		orderID = existingOrders[0].ID
+
+		s.logger.Info("найден существующий заказ",
+			zap.String("order_id", orderID),
+			zap.Int64("client_id", clientID),
+		)
+	} else {
+		// Если нет активного заказа, создаем новый
+		orderID = generateOrderID()
+
+		// Создаем новый заказ
+		order := models.Order{
+			ID:        orderID,
+			ClientID:  clientID,
+			Status:    models.OrderStatusNew,
+			CreatedAt: time.Now(),
+		}
+
+		// Сохраняем заказ в базе данных
+		err = s.orderRepo.CreateOrder(order)
+		if err != nil {
+			s.logger.Error("ошибка при создании заказа",
+				zap.Error(err),
+				zap.String("order_id", orderID),
+				zap.Int64("client_id", clientID),
+			)
+			return "", err
+		}
+
+		s.logger.Info("создан новый заказ",
+			zap.String("order_id", orderID),
+			zap.Int64("client_id", clientID),
+		)
+	}
+
+	// Обновляем клиента для заказа перед отправкой в канал
+	orderWithClient := models.Order{
+		ID:         orderID,
+		ClientID:   clientID,
+		ClientName: clientName,
+		ClientUser: clientUser,
+		Status:     models.OrderStatusNew,
+		CreatedAt:  time.Now(),
+	}
+
+	// Отправляем уведомление в канал астрологов
+	messageID, err := s.telegram.SendFullConsultationToAstrologers(s.channelID, orderWithClient)
+	if err != nil {
+		s.logger.Error("ошибка при отправке заказа на полную консультацию в канал астрологов",
+			zap.Error(err),
+			zap.String("order_id", orderID),
+		)
+		return orderID, err
+	}
+
+	// Сохраняем ID сообщения для возможности обновления
+	s.orderMessages[orderID] = messageID
+
+	s.logger.Info("отправлено уведомление о полной консультации",
+		zap.String("order_id", orderID),
+		zap.Int64("client_id", clientID),
+		zap.String("message_id", messageID),
+	)
+
+	return orderID, nil
+}
+
 func (s *OrderService) TakeOrder(orderID string, astrologerID int64, astrologerName string) error {
 	// Получаем заказ из репозитория
 	order, err := s.orderRepo.GetOrderByID(orderID)
