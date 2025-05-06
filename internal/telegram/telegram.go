@@ -150,7 +150,7 @@ func (t *TelegramClient) SendOrderToAstrologers(channelID string, order models.O
 	textBuilder := strings.Builder{}
 	textBuilder.WriteString("🌟 *НОВЫЙ ЗАКАЗ НА КОНСУЛЬТАЦИЮ* 🌟\n\n")
 	textBuilder.WriteString(fmt.Sprintf("*ID заказа:* `%s`\n", order.ID))
-	textBuilder.WriteString(fmt.Sprintf("*Клиент:* %s\n", utils.EscapeMarkdownV2(clientName)))
+	textBuilder.WriteString(fmt.Sprintf("*Клиент:* %s\n", clientName))
 	textBuilder.WriteString(fmt.Sprintf("*Username:* @%s\n", utils.EscapeMarkdownV2(clientUser)))
 	textBuilder.WriteString(fmt.Sprintf("*Дата заказа:* %s\n", order.CreatedAt.Format("02.01.2006 15:04")))
 
@@ -306,17 +306,4 @@ func (t *TelegramClient) StartBot() (chan models.User, chan models.CallbackQuery
 	}()
 
 	return userMessages, callbackQueries, nil
-}
-
-// Эти методы теперь устарели, но мы оставляем их для обратной совместимости
-// Они должны быть удалены в дальнейшем
-
-func (t *TelegramClient) ListenUpdates() (<-chan models.User, error) {
-	log.Println("ВНИМАНИЕ: Метод ListenUpdates устарел. Используйте StartBot вместо него")
-	return nil, fmt.Errorf("метод устарел, используйте StartBot")
-}
-
-func (t *TelegramClient) ListenCallbackQueries() (<-chan models.CallbackQuery, error) {
-	log.Println("ВНИМАНИЕ: Метод ListenCallbackQueries устарел. Используйте StartBot вместо него")
-	return nil, fmt.Errorf("метод устарел, используйте StartBot")
 }

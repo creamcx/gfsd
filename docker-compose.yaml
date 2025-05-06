@@ -14,9 +14,6 @@ services:
       - DB_NAME=postgres
     volumes:
       - ./config/config.yaml:/app/config.yaml
-      - pdf_data:/app/data/pdf
-    ports:
-      - "8080:8080"
 
   postgres:
     image: postgres:15
@@ -27,11 +24,9 @@ services:
       - POSTGRES_DB=postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./migrations/init.sql:/docker-entrypoint-initdb.d/init.sql
-      - ./migrations/migration_button_reminder.sql:/docker-entrypoint-initdb.d/migration_button_reminder.sql
+      - ./migrations:/app/migrations
     ports:
-      - "15432:5432"
+      - "54321:5432"
 
 volumes:
   postgres_data:
-  pdf_data:

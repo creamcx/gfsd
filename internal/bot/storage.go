@@ -19,13 +19,7 @@ type TelegramClient interface {
 	UpdateMessageReplyMarkup(chatID int64, messageID string, keyboard tgbotapi.InlineKeyboardMarkup) error
 	UpdateOrderMessage(channelID string, messageID string, text string, keyboard tgbotapi.InlineKeyboardMarkup) error
 	SendCustomMessage(params map[string]interface{}) error
-
-	// Метод объединенного обработчика обновлений
 	StartBot() (chan models.User, chan models.CallbackQuery, error)
-
-	// Устаревшие методы, оставлены для обратной совместимости
-	ListenUpdates() (<-chan models.User, error)
-	ListenCallbackQueries() (<-chan models.CallbackQuery, error)
 }
 
 // Service - основной сервис бота

@@ -28,25 +28,21 @@ type Contact struct {
 	LastName    string
 }
 
-// Order представляет собой заказ на консультацию
 type Order struct {
-	ID             string      `db:"id" json:"id"`               // ID заказа
-	ClientID       int64       `db:"client_id" json:"client_id"` // ID клиента в Telegram
-	ClientName     string      `db:"client_name" json:"client_name"`
-	ClientUser     string      `db:"client_user" json:"client_user"`
-	Status         OrderStatus `db:"status" json:"status"`         // Статус заказа
-	CreatedAt      time.Time   `db:"created_at" json:"created_at"` // Время создания заказа
-	AstrologerID   int64       `db:"astrologer_id" json:"astrologer_id,omitempty"`
-	AstrologerName string      `db:"astrologer_name" json:"astrologer_name,omitempty"`
-	TakenAt        *time.Time  `db:"taken_at" json:"taken_at,omitempty"` // Время взятия заказа в работу
-	ReferrerID     int64       `db:"referrer_id" json:"referrer_id,omitempty"`
-	ReferrerName   string      `db:"referrer_name" json:"referrer_name,omitempty"`
-
-	// Добавляем новые поля
-	ButtonPressed  bool       `db:"button_pressed" json:"button_pressed"`               // Флаг нажатия кнопки
-	ReminderSentAt *time.Time `db:"reminder_sent_at" json:"reminder_sent_at,omitempty"` // Время отправки напоминания
-	PDFURL         string     `db:"pdf_url" json:"pdf_url,omitempty"`                   // URL PDF-документа
-	PDFSentAt      *time.Time `db:"pdf_sent_at" json:"pdf_sent_at,omitempty"`           // Время отправки PDF
+	ID                    string      `db:"id" json:"id"`
+	ClientID              int64       `db:"client_id" json:"client_id"`
+	ClientName            string      `db:"client_name" json:"-"` // Добавьте тег db
+	ClientUser            string      `db:"client_user" json:"-"` // Добавьте тег db
+	Status                OrderStatus `db:"status" json:"status"`
+	CreatedAt             time.Time   `db:"created_at" json:"created_at"`
+	AstrologerID          int64       `db:"astrologer_id"`
+	AstrologerName        string      `db:"astrologer_name" json:"astrologer_name,omitempty"`
+	TakenAt               *time.Time  `db:"taken_at" json:"taken_at,omitempty"`
+	ReferrerID            int64       `db:"referrer_id" json:"referrer_id,omitempty"`
+	ReferrerName          string      `db:"referrer_name" json:"referrer_name,omitempty"`
+	ConsultationStartedAt time.Time   `db:"consultation_started_at"`
+	ConsultationStatus    string      `db:"consultation_status"`
+	ReminderSent          bool        `db:"reminder_sent" json:"reminder_sent"`
 }
 
 type CallbackQuery struct {

@@ -13,22 +13,3 @@ database:
   password: "postgres"
   dbname: "postgres"
   sslmode: "disable"
-
-# Добавьте эти настройки в конфигурацию
-
-# Настройки API и веб-сервера
-api:
-  # Адрес для HTTP-сервера обработки нажатий на кнопку
-  button_server_addr: ":8080"
-  # Публичный URL для доступа к API (используется в PDF)
-  public_url: "http://your-domain.com"
-  # Путь для хранения PDF файлов
-  pdf_storage_path: "./data/pdf"
-
-
-# Настройки сервиса напоминаний
-reminder:
-  # Период проверки для отправки напоминаний (в минутах)
-  check_period: 30
-  # Время после взятия заказа в работу, через которое отправляется напоминание (в часах)
-  reminder_time: 24

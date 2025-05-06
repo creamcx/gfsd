@@ -1,17 +1,40 @@
 package app
 
 import (
-	"astro-sarafan/internal/api"
 	"astro-sarafan/internal/bot"
 	"astro-sarafan/internal/config"
 	"astro-sarafan/internal/database"
 	"astro-sarafan/internal/logger"
 	"astro-sarafan/internal/telegram"
-	"os"
-	_ "time"
-
+	"database/sql"
+	"errors"
+	"fmt"
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"go.uber.org/zap"
+	"time"
 )
+
+func runMigrations(db *sql.DB) error {
+	driver, err := postgres.WithInstance(db, &postgres.Config{})
+	if err != nil {
+		return fmt.Errorf("не удалось создать драйвер миграций: %w", err)
+	}
+
+	m, err := migrate.NewWithDatabaseInstance(
+		"file://migrations",
+		"postgres", driver)
+	if err != nil {
+		return fmt.Errorf("не удалось создать экземпляр миграций: %w", err)
+	}
+
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("ошибка выполнения миграций: %w", err)
+	}
+
+	return nil
+}
 
 func Run() error {
 	// Загружаем конфигурацию
@@ -33,6 +56,11 @@ func Run() error {
 		logger.Error("не удалось подключиться к базе данных", zap.Error(err))
 		return err
 	}
+	go func() {
+		if err := runMigrations(db.DB); err != nil {
+			logger.Error("не удалось выполнить миграции", zap.Error(err))
+		}
+	}()
 
 	// Инициализируем репозитории
 	userRepo := database.NewUserRepository(db, logger)
@@ -44,31 +72,19 @@ func Run() error {
 	// Инициализируем сервис заказов
 	orderService := bot.NewOrderService(tgClient, logger, cfg.Telegram.AstrologerChannel, orderRepo, userRepo)
 
-	// Создаем директорию для хранения PDF, если её нет
-	if err := os.MkdirAll(cfg.API.PDFStoragePath, 0755); err != nil {
-		logger.Error("ошибка создания директории для PDF", zap.Error(err))
-		return err
-	}
-
-	// Инициализируем HTTP-сервер для обработки нажатий на кнопку
-	buttonServer := api.NewButtonServer(
-		logger,
-		orderRepo,
-		cfg.API.ButtonServerAddr,
-		cfg.API.PDFStoragePath,
-	)
-	buttonServer.Start()
-
-	// Инициализируем сервис напоминаний
-	reminderService := bot.NewReminderService(orderRepo, tgClient, logger)
-	reminderService.Start()
-
 	// Инициализируем основной сервис бота
 	botService := bot.NewService(tgClient, logger, orderService, userRepo)
 
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		for range ticker.C {
+			orderService.CheckConsultationTimeouts()
+		}
+	}()
+
 	// Запускаем бота
 	if err := botService.Start(); err != nil {
-		logger.Error("ошибка запуска бота", zap.Error(err))
+		logger.Error("failed to start bot", zap.Error(err))
 		return err
 	}
 

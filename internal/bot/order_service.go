@@ -130,7 +130,7 @@ func (s *OrderService) TakeOrder(orderID string, astrologerID int64, astrologerN
 		clientUser = "unnamed_user"
 	}
 	astrologerNameSafe := utils.EscapeMarkdownV2(astrologerName)
-	clientNameSafe := utils.EscapeMarkdownV2(clientName)
+	clientNameSafe := clientName
 	clientUserSafe := utils.EscapeMarkdownV2(clientUser)
 
 	// Логируем информацию о заказе перед обновлением
@@ -272,6 +272,43 @@ func (s *OrderService) TakeOrder(orderID string, astrologerID int64, astrologerN
 		zap.String("order_id", orderID),
 		zap.Int64("astrologer_id", astrologerID),
 	)
+
+	return nil
+}
+
+func (s *OrderService) CheckConsultationTimeouts() {
+	// Получаем список активных заказов
+	activeOrders, err := s.orderRepo.GetActiveOrdersOver24Hours()
+	if err != nil {
+		s.logger.Error("Ошибка получения активных заказов", zap.Error(err))
+		return
+	}
+
+	for _, order := range activeOrders {
+		// Отправляем push-уведомление
+		err := s.sendConsultationReminderMessage(order)
+		if err == nil {
+			// Помечаем, что напоминание отправлено, только если отправка успешна
+			s.orderRepo.MarkReminderSent(order.ID)
+		}
+	}
+}
+
+func (s *OrderService) sendConsultationReminderMessage(order models.Order) error {
+	message := "⭐ Хотите узнать больше? ⭐ Только сегодня скидка на полный анализ вашей карты!"
+
+	// Создаем inline-кнопки
+	buttons := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Записаться на консультацию", "consultation_continue"),
+		),
+	)
+
+	err := s.telegram.SendMessageWithInlineKeyboard(order.ClientID, message, buttons)
+	if err != nil {
+		s.logger.Error("Ошибка отправки напоминания", zap.Error(err))
+		return err
+	}
 
 	return nil
 }

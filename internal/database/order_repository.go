@@ -174,14 +174,16 @@ func (r *OrderRepository) UpdateOrderStatus(orderID string, status models.OrderS
         SET 
             status = $1, 
             taken_at = $2, 
-            astrologer_id = $3, 
-            astrologer_name = $4
-        WHERE id = $5 AND status = $6
+            consultation_started_at = $3,
+            astrologer_id = $4, 
+            astrologer_name = $5
+        WHERE id = $6 AND status = $7
     `
 
 	result, err := tx.Exec(
 		query,
 		status,
+		now,
 		now,
 		astrologerID,
 		astrologerName,
@@ -250,142 +252,24 @@ func (r *OrderRepository) GetAllOrders() ([]models.Order, error) {
 	return orders, nil
 }
 
-// GetOrdersForReminder получает заказы, которым нужно отправить напоминание
-func (r *OrderRepository) GetOrdersForReminder(reminderThreshold time.Duration) ([]models.Order, error) {
-	var orders []models.Order
-	thresholdTime := time.Now().Add(-reminderThreshold)
-
+func (r *OrderRepository) GetActiveOrdersOver24Hours() ([]models.Order, error) {
 	query := `
-        SELECT 
-            o.id, o.client_id, o.status, o.created_at, o.taken_at, 
-            COALESCE(o.astrologer_id, 0) as astrologer_id, 
-            COALESCE(o.astrologer_name, '') as astrologer_name,
-            COALESCE(u.username, '') as client_user, 
-            COALESCE(u.full_name, '') as client_name,
-            o.button_pressed, o.reminder_sent_at, 
-            COALESCE(o.pdf_url, '') as pdf_url,
-            o.pdf_sent_at
-        FROM orders o
-        LEFT JOIN users u ON o.client_id = u.chat_id
-        WHERE o.status = $1 
-          AND o.taken_at <= $2 
-          AND o.button_pressed = FALSE 
-          AND (o.reminder_sent_at IS NULL OR o.reminder_sent_at <= $3)
-          AND o.pdf_url IS NOT NULL 
-          AND o.pdf_sent_at IS NOT NULL
+        SELECT * FROM orders 
+        WHERE consultation_started_at < NOW() - INTERVAL '24 hours'
+        AND status = 'in_work'
+        AND (reminder_sent IS NULL OR reminder_sent = false)
     `
-
-	// Считаем, что повторное напоминание можно отправить через 24 часа после предыдущего
-	repeatReminderTime := time.Now().Add(-24 * time.Hour)
-
-	err := r.db.Select(&orders, query, models.OrderStatusInWork, thresholdTime, repeatReminderTime)
-	if err != nil {
-		r.logger.Error("Ошибка при получении заказов для напоминания",
-			zap.Error(err),
-			zap.Duration("threshold", reminderThreshold))
-		return nil, err
-	}
-
-	return orders, nil
+	var orders []models.Order
+	err := r.db.Select(&orders, query)
+	return orders, err
 }
 
-// UpdateReminderSent обновляет время отправки напоминания
-func (r *OrderRepository) UpdateReminderSent(orderID string) error {
-	now := time.Now()
-	query := `UPDATE orders SET reminder_sent_at = $1 WHERE id = $2`
-
-	_, err := r.db.Exec(query, now, orderID)
-	if err != nil {
-		r.logger.Error("Ошибка при обновлении времени отправки напоминания",
-			zap.Error(err),
-			zap.String("order_id", orderID))
-		return err
-	}
-
-	return nil
-}
-
-// UpdatePDFInfo обновляет информацию о PDF консультации
-func (r *OrderRepository) UpdatePDFInfo(orderID string, pdfURL string) error {
-	now := time.Now()
-	query := `UPDATE orders SET pdf_url = $1, pdf_sent_at = $2 WHERE id = $3`
-
-	_, err := r.db.Exec(query, pdfURL, now, orderID)
-	if err != nil {
-		r.logger.Error("Ошибка при обновлении информации о PDF",
-			zap.Error(err),
-			zap.String("order_id", orderID),
-			zap.String("pdf_url", pdfURL))
-		return err
-	}
-
-	return nil
-}
-
-// UpdateButtonPressed обновляет статус нажатия кнопки
-func (r *OrderRepository) UpdateButtonPressed(orderID string) error {
-	query := `UPDATE orders SET button_pressed = TRUE WHERE id = $1`
-
+func (r *OrderRepository) MarkReminderSent(orderID string) error {
+	query := `
+        UPDATE orders 
+        SET reminder_sent = true 
+        WHERE id = $1
+    `
 	_, err := r.db.Exec(query, orderID)
-	if err != nil {
-		r.logger.Error("Ошибка при обновлении статуса нажатия кнопки",
-			zap.Error(err),
-			zap.String("order_id", orderID))
-		return err
-	}
-
-	r.logger.Info("Обновлен статус нажатия кнопки",
-		zap.String("order_id", orderID),
-		zap.Bool("button_pressed", true))
-
-	return nil
-}
-
-// GetOrdersInWorkWithoutPDF получает заказы в статусе "in_work" без URL PDF
-func (r *OrderRepository) GetOrdersInWorkWithoutPDF() ([]models.Order, error) {
-	var orders []models.Order
-	query := `
-        SELECT 
-            o.id, o.client_id, o.status, o.created_at, o.taken_at, 
-            COALESCE(o.astrologer_id, 0) as astrologer_id, 
-            COALESCE(o.astrologer_name, '') as astrologer_name,
-            COALESCE(u.username, '') as client_user, 
-            COALESCE(u.full_name, '') as client_name,
-            o.button_pressed, o.reminder_sent_at, 
-            COALESCE(o.pdf_url, '') as pdf_url,
-            o.pdf_sent_at
-        FROM orders o
-        LEFT JOIN users u ON o.client_id = u.chat_id
-        WHERE o.status = $1 AND (o.pdf_url IS NULL OR o.pdf_url = '')
-        ORDER BY o.taken_at
-    `
-
-	err := r.db.Select(&orders, query, models.OrderStatusInWork)
-	if err != nil {
-		r.logger.Error("Ошибка при получении заказов без PDF", zap.Error(err))
-		return nil, err
-	}
-
-	return orders, nil
-}
-
-// Добавьте метод в OrderRepository для прикрепления PDF к заказу
-func (r *OrderRepository) AttachPDFToOrder(orderID string, pdfURL string) error {
-	now := time.Now()
-	query := `UPDATE orders SET pdf_url = $1, pdf_sent_at = $2 WHERE id = $3`
-
-	_, err := r.db.Exec(query, pdfURL, now, orderID)
-	if err != nil {
-		r.logger.Error("Ошибка при прикреплении PDF к заказу",
-			zap.Error(err),
-			zap.String("order_id", orderID),
-			zap.String("pdf_url", pdfURL))
-		return err
-	}
-
-	r.logger.Info("PDF успешно прикреплен к заказу",
-		zap.String("order_id", orderID),
-		zap.String("pdf_url", pdfURL))
-
-	return nil
+	return err
 }
