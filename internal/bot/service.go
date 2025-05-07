@@ -2,10 +2,8 @@ package bot
 
 import (
 	"astro-sarafan/internal/database"
-	"astro-sarafan/internal/models"
 	"go.uber.org/zap"
 	"strings"
-	"time"
 )
 
 // NewService - создает новый экземпляр основного сервиса бота
@@ -52,7 +50,7 @@ func (s *Service) Start() error {
 					}
 				}
 			} else if callback.Data == "consultation_continue" {
-				s.logger.Info("получен запрос на полную консультацию",
+				s.logger.Info("получен запрос на полную консультацию через callback",
 					zap.Int64("user_id", callback.UserID),
 				)
 
@@ -66,19 +64,18 @@ func (s *Service) Start() error {
 					continue
 				}
 
-				// Создаем или обновляем заказ пользователя
-				orderID, err := s.orderService.ProcessFullConsultationRequest(
+				// Создаем новый заказ на полную консультацию через orderService
+				orderID, err := s.orderService.CreateFullConsultationOrder(
 					callback.UserID,
 					user.FullName,
 					user.Username,
 				)
 
 				if err != nil {
-					s.logger.Error("ошибка при обработке запроса на полную консультацию",
+					s.logger.Error("ошибка при обработке запроса на полную консультацию через callback",
 						zap.Error(err),
 						zap.Int64("user_id", callback.UserID),
 					)
-
 					// Информируем пользователя об ошибке
 					s.telegram.SendMessage(callback.UserID, "Произошла ошибка при обработке запроса на полную консультацию. Пожалуйста, попробуйте позже.")
 					continue
@@ -87,7 +84,7 @@ func (s *Service) Start() error {
 				// Отправляем подтверждение пользователю
 				s.telegram.SendMessage(callback.UserID, "✨ Благодарим за ваш запрос на полную астрологическую консультацию! Наш астролог получит уведомление и свяжется с вами в ближайшее время.")
 
-				s.logger.Info("заказ на полную консультацию обработан",
+				s.logger.Info("заказ на полную консультацию обработан через callback",
 					zap.Int64("user_id", callback.UserID),
 					zap.String("order_id", orderID),
 				)
@@ -112,118 +109,4 @@ func (s *Service) Start() error {
 	}
 
 	return nil
-}
-
-// Добавьте в internal/bot/order_service.go
-func (s *OrderService) CreateFullConsultationOrder(clientID int64, clientName, clientUser string) (string, error) {
-	// Логируем запрос
-	s.logger.Info("Создание заказа на полную консультацию",
-		zap.Int64("client_id", clientID),
-		zap.String("client_name", clientName),
-		zap.String("client_user", clientUser),
-	)
-
-	// Сохраняем пользователя (если ещё не существует)
-	user := models.User{
-		ChatID:   clientID,
-		Username: clientUser,
-		FullName: clientName,
-	}
-
-	err := s.userRepo.CreateUser(user)
-	if err != nil {
-		s.logger.Error("ошибка при сохранении пользователя",
-			zap.Error(err),
-			zap.Int64("client_id", clientID),
-		)
-		return "", err
-	}
-
-	// Генерируем уникальный ID заказа
-	orderID := generateOrderID()
-
-	// Создаем заказ с маркером полной консультации
-	order := models.Order{
-		ID:                 orderID,
-		ClientID:           clientID,
-		Status:             models.OrderStatusNew,
-		CreatedAt:          time.Now(),
-		ConsultationStatus: "full", // Отмечаем, что это полная консультация
-	}
-
-	// Проверяем, есть ли у пользователя уже заказ
-	hasConsultation, err := s.userRepo.HasActiveConsultation(clientID)
-	if err != nil {
-		s.logger.Error("ошибка при проверке наличия консультации",
-			zap.Error(err),
-			zap.Int64("client_id", clientID),
-		)
-		return "", err
-	}
-
-	// Если у пользователя уже есть консультация, обновляем её до полной
-	if hasConsultation {
-		err = s.orderRepo.UpdateConsultationToFull(clientID)
-		if err != nil {
-			s.logger.Error("ошибка при обновлении консультации до полной",
-				zap.Error(err),
-				zap.Int64("client_id", clientID),
-			)
-			return "", err
-		}
-
-		// Получаем ID существующего заказа для отправки уведомления
-		existingOrder, err := s.orderRepo.GetOrderByClientID(clientID)
-		if err != nil {
-			s.logger.Error("ошибка при получении существующего заказа",
-				zap.Error(err),
-				zap.Int64("client_id", clientID),
-			)
-			return "", err
-		}
-
-		orderID = existingOrder.ID
-	} else {
-		// Создаем новый заказ
-		err = s.orderRepo.CreateOrder(order)
-		if err != nil {
-			s.logger.Error("ошибка при создании заказа",
-				zap.Error(err),
-				zap.String("order_id", orderID),
-			)
-			return "", err
-		}
-	}
-
-	// Обновляем данные для отправки в канал
-	orderWithClient := models.Order{
-		ID:                 orderID,
-		ClientID:           clientID,
-		ClientName:         clientName,
-		ClientUser:         clientUser,
-		Status:             models.OrderStatusNew,
-		CreatedAt:          time.Now(),
-		ConsultationStatus: "full",
-	}
-
-	// Отправляем уведомление в канал астрологов
-	messageID, err := s.telegram.SendFullConsultationToAstrologers(s.channelID, orderWithClient)
-	if err != nil {
-		s.logger.Error("ошибка при отправке заказа на полную консультацию в канал астрологов",
-			zap.Error(err),
-			zap.String("order_id", orderID),
-		)
-		return orderID, err
-	}
-
-	// Сохраняем ID сообщения для возможности обновления
-	s.orderMessages[orderID] = messageID
-
-	s.logger.Info("создан заказ на полную консультацию",
-		zap.String("order_id", orderID),
-		zap.Int64("client_id", clientID),
-		zap.String("message_id", messageID),
-	)
-
-	return orderID, nil
 }

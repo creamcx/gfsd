@@ -28,11 +28,13 @@ type Contact struct {
 	LastName    string
 }
 
+// В файле internal/models/user.go
+
 type Order struct {
 	ID                    string      `db:"id" json:"id"`
 	ClientID              int64       `db:"client_id" json:"client_id"`
-	ClientName            string      `db:"client_name" json:"-"` // Добавьте тег db
-	ClientUser            string      `db:"client_user" json:"-"` // Добавьте тег db
+	ClientName            string      `db:"client_name" json:"-"`
+	ClientUser            string      `db:"client_user" json:"-"`
 	Status                OrderStatus `db:"status" json:"status"`
 	CreatedAt             time.Time   `db:"created_at" json:"created_at"`
 	AstrologerID          int64       `db:"astrologer_id"`
@@ -42,7 +44,7 @@ type Order struct {
 	ReferrerName          string      `db:"referrer_name" json:"referrer_name,omitempty"`
 	ConsultationStartedAt time.Time   `db:"consultation_started_at"`
 	ConsultationStatus    string      `db:"consultation_status"`
-	ReminderSent          bool        `db:"reminder_sent" json:"reminder_sent"`
+	NotificationSent      bool        `db:"notification_sent" json:"notification_sent"`
 }
 
 type CallbackQuery struct {

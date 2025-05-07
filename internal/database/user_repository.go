@@ -146,25 +146,6 @@ func (r *UserRepository) GetUserByReferralCode(referralCode string) (models.User
 	return user, nil
 }
 
-// Вспомогательный метод для логирования существующих реферальных кодов
-func (r *UserRepository) logExistingReferralCodes(requestedCode string) {
-	query := `SELECT referral_code FROM users WHERE referral_code IS NOT NULL LIMIT 10`
-	var existingCodes []string
-
-	err := r.db.Select(&existingCodes, query)
-	if err != nil {
-		r.logger.Error("Ошибка при получении существующих реферальных кодов",
-			zap.Error(err),
-		)
-		return
-	}
-
-	r.logger.Warn("Код не найден. Существующие коды:",
-		zap.Strings("existing_codes", existingCodes),
-		zap.String("requested_code", requestedCode),
-	)
-}
-
 func (r *UserRepository) GetUserByID(chatID int64) (models.User, error) {
 	var user models.User
 	query := `SELECT chat_id, username, full_name, referral_code FROM users WHERE chat_id = $1`
